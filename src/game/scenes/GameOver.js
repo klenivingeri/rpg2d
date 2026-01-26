@@ -20,7 +20,9 @@ export class GameOver extends Scene
             align: 'center'
         }).setOrigin(0.5).setDepth(100);
 
+        // Notifica a aplicação React que houve Game Over
         EventBus.emit('current-scene-ready', this);
+        EventBus.emit('game-over');
     }
 
     changeScene ()

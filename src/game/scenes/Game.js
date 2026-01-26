@@ -10,6 +10,8 @@ export class Game extends Scene
     {
         super('Game');
     }
+    
+    // background carregado na Boot (preloader usa mesma chave)
 
     create ()
     {
@@ -25,11 +27,12 @@ export class Game extends Scene
             window.addEventListener('contextmenu', (e) => { e.preventDefault(); });
         }
 
-        // background placeholder
-        if (this.textures.exists('background'))
-        {
-            this.add.image(512, 384, 'background').setAlpha(0.5);
-        }
+        // Fundo / mapa: força o tamanho lógico para 1600x1600 e origem em 0,0
+        const bg = this.add.image(0, 0, 'background').setOrigin(0, 0);
+        bg.setDisplaySize(1600, 1600);
+
+        // Limites do mundo físico para impedir que o player saia das bordas
+        this.physics.world.setBounds(0, 0, 1600, 1600, true, true, true, true);
 
         // player
         this.player = new Player(this, 200, 300);
@@ -117,6 +120,31 @@ export class Game extends Scene
             }
         });
 
+        // --- Câmera ---
+        const cam = this.cameras.main;
+        cam.setBounds(0, 0, 1600, 1600);
+
+        const followTarget = (this.player && this.player.sprite) ? this.player.sprite : this.player;
+        cam.startFollow(followTarget, true, 0.1, 0.1);
+        // Aplicar zoom/scale global da câmera
+        const WORLD_SCALE = 1.3;
+        cam.setZoom(WORLD_SCALE);
+
+        const updateCameraDeadzone = () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+
+            const dzW = Math.floor(w * 0.4);
+            const dzH = Math.floor(h * 0.4);
+
+            cam.setViewport(0, 0, w, h);
+            cam.setDeadzone(dzW, dzH);
+        };
+
+        updateCameraDeadzone();
+        window.addEventListener('resize', updateCameraDeadzone);
+        this.scale.on('resize', updateCameraDeadzone);
+
         EventBus.emit('current-scene-ready', this);
     }
 
@@ -145,6 +173,8 @@ export class Game extends Scene
 
     changeScene ()
     {
-        this.scene.start('GameOver');
+        // Em vez de iniciar a cena visual de GameOver, notifica a UI React
+        EventBus.emit('game-over');
     }
+
 }

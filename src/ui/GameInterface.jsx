@@ -1,0 +1,226 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import './GameInterface.css';
+import { EventBus } from '../game/EventBus';
+
+// Contexto global para UI do jogo
+const GameUIContext = createContext(null);
+
+export function useGameUI() {
+  return useContext(GameUIContext);
+}
+
+export function GameUIProvider({ children }) {
+  const [gameState, setGameState] = useState({
+    view: 'init', // 'init' | 'hud' | 'result'
+    gold: 0,
+    monstersKilled: 0,
+    totalMonsters: 10,
+    inventory: [],
+    equippedItems: { weapon: null, armor: null, accessory: null },
+    skills: []
+  });
+
+  const setView = (v) => setGameState(s => ({ ...s, view: v }));
+  const addGold = (amount) => setGameState(s => ({ ...s, gold: s.gold + amount }));
+  const addKill = () => setGameState(s => ({ ...s, monstersKilled: s.monstersKilled + 1 }));
+  const reset = () => setGameState({ view: 'init', gold: 0, monstersKilled: 0, totalMonsters: 10, inventory: [], equippedItems: { weapon: null, armor: null, accessory: null }, skills: [] });
+
+  // Ouve evento 'game-over' vindo do Phaser e muda para a view de resultado
+  useEffect(() => {
+    const onGameOver = () => setGameState(s => ({ ...s, view: 'result' }));
+    EventBus.on('game-over', onGameOver);
+    return () => { EventBus.removeListener('game-over', onGameOver); };
+  }, []);
+  return (
+    <GameUIContext.Provider value={{ gameState, setGameState, setView, addGold, addKill, reset }}>
+      {children}
+    </GameUIContext.Provider>
+  );
+}
+
+// Componentes auxiliares: Modal simples
+function Modal({ open, title, onClose, children }) {
+  if (!open) return null;
+  return (
+    <div className="gi-modal" role="dialog" aria-modal="true">
+      <div className="gi-modal-content">
+        <div className="gi-modal-header">
+          <h3>{title}</h3>
+          <button className="gi-btn-ghost" onClick={onClose}>Fechar</button>
+        </div>
+        <div className="gi-modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// GameInterface principal
+export default function GameInterface({ phaserRef }) {
+  const { gameState, setView, reset } = useGameUI();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [invOpen, setInvOpen] = useState(false);
+
+  // Oculta/exibe o canvas do Phaser quando a UI estiver ativa
+  useEffect(() => {
+    const shouldHide = gameState.view === 'init' || gameState.view === 'result' || menuOpen || statsOpen || invOpen;
+
+    // tenta obter o canvas do Phaser ou o container
+    const g = phaserRef?.current?.game;
+    let targetEl = null;
+    if (g && (g.canvas || (g.renderer && g.renderer.canvas))) {
+      targetEl = (g.canvas || (g.renderer && g.renderer.canvas));
+      // se o alvo for o canvas, escondemos o elemento pai para retirar também o espaço
+      if (targetEl.parentElement) targetEl = targetEl.parentElement;
+    }
+    else {
+      targetEl = document.getElementById('game-container');
+    }
+
+    if (targetEl) {
+      targetEl.style.display = shouldHide ? 'none' : '';
+    }
+
+    // Se estivermos na tela de preparação, pause as scenes ativas para economizar processamento
+    try {
+      const g = phaserRef?.current?.game;
+      if (g && g.scene && typeof g.scene.getScenes === 'function') {
+        const activeScenes = g.scene.getScenes(true) || [];
+        if (shouldHide && (gameState.view === 'init' || gameState.view === 'result')) {
+          activeScenes.forEach(s => {
+            try { g.scene.pause(s.scene.key); } catch (e) { /* ignore */ }
+          });
+        }
+      }
+    } catch (e) { console.warn(e); }
+
+    return () => {
+      // ao desmontar, garante que mostramos novamente
+      if (targetEl) targetEl.style.display = '';
+    };
+  }, [gameState.view, menuOpen, statsOpen, invOpen, phaserRef]);
+
+  const pauseGame = () => {
+    try {
+      const g = phaserRef?.current?.game;
+      if (g) g.scene.pause();
+    } catch (e) { console.warn(e); }
+  };
+  const resumeGame = () => {
+    try {
+      const g = phaserRef?.current?.game;
+      if (g) g.scene.resume();
+    } catch (e) { console.warn(e); }
+  };
+
+  const openMenu = () => { pauseGame(); setMenuOpen(true); };
+  const closeMenu = () => { setMenuOpen(false); resumeGame(); };
+  const openStats = () => { pauseGame(); setStatsOpen(true); };
+  const closeStats = () => { setStatsOpen(false); resumeGame(); };
+  const openInv = () => { pauseGame(); setInvOpen(true); };
+  const closeInv = () => { setInvOpen(false); resumeGame(); };
+
+  // iniciar jogo
+  const start = () => {
+    // mostra o canvas e inicia ou resume a cena 'Game'
+    try {
+      const g = phaserRef?.current?.game;
+      const container = document.getElementById('game-container');
+      if (container) container.style.display = '';
+      if (g && g.scene) {
+        try {
+          // se a cena já estiver ativa, apenas resume
+          if (typeof g.scene.isActive === 'function' && g.scene.isActive('Game')) {
+            g.scene.resume('Game');
+          }
+          else {
+            // caso não exista ou não esteja ativa, inicia a cena
+            g.scene.start('Game');
+          }
+        } catch (e) {
+          // fallback: tentar start sempre
+          try { g.scene.start('Game'); } catch (err) { console.warn(err); }
+        }
+      }
+    } catch (e) { console.warn(e); }
+
+    setView('hud');
+  };
+
+  // resetar para init
+  const handleReset = () => { reset(); setView('init'); };
+
+  // layout grid 12x12; usamos classes para posicionar os elementos
+  return (
+    <div className="game-interface">
+
+      {/* VIEW: INIT */}
+      {gameState.view === 'init' && (
+        <div className="gi-panel gi-init" style={{ pointerEvents: 'auto' }}>
+          <h2>Preparação</h2>
+          <div className="gi-equip-slots">
+            <div className="slot">Arma</div>
+            <div className="slot">Armadura</div>
+            <div className="slot">Acessório</div>
+          </div>
+          <div className="gi-placeholders">
+            <div className="placeholder">Melhorias (placeholder)</div>
+            <div className="placeholder">Loja (placeholder)</div>
+          </div>
+          <button className="gi-btn gi-btn-primary gi-start" onClick={start}>INICIAR</button>
+        </div>
+      )}
+
+      {/* VIEW: HUD */}
+      {gameState.view === 'hud' && (
+        <>
+          {/* Progress bar area L1C6 - L2C7 */}
+          <div className="gi-progress" style={{ pointerEvents: 'auto' }}>
+            <div className="gi-progress-label">Progresso</div>
+            <div className="gi-progress-bar">
+              <div className="gi-progress-fill" style={{ width: `${(gameState.monstersKilled / Math.max(1, gameState.totalMonsters)) * 100}%` }} />
+            </div>
+          </div>
+
+          {/* Menu top-right L1C12 */}
+          <button className="gi-btn gi-btn-large gi-top-right" onClick={openMenu}>Menu</button>
+
+          {/* Stats bottom-left L12C1 */}
+          <button className="gi-btn gi-btn-large gi-bottom-left" onClick={openStats}>Stats</button>
+
+          {/* Inventory bottom-right L12C12 */}
+          <button className="gi-btn gi-btn-large gi-bottom-right" onClick={openInv}>Inventário</button>
+
+          <Modal open={menuOpen} title="Opções" onClose={closeMenu}>
+            <p>Opções do jogo (placeholder)</p>
+          </Modal>
+
+          <Modal open={statsOpen} title="Status" onClose={closeStats}>
+            <p>HP/MP/Level (placeholder)</p>
+          </Modal>
+
+          <Modal open={invOpen} title="Inventário" onClose={closeInv}>
+            <p>Itens coletados:</p>
+            <ul>
+              {gameState.inventory.map((it, idx) => <li key={idx}>{it.name || it}</li>)}
+            </ul>
+          </Modal>
+        </>
+      )}
+
+      {/* VIEW: RESULT */}
+      {gameState.view === 'result' && (
+        <div className="gi-panel gi-result" style={{ pointerEvents: 'auto' }}>
+          <h2>Fim de Jogo</h2>
+          <p>Gold: {gameState.gold}</p>
+          <p>Itens coletados:</p>
+          <ul>
+            {gameState.inventory.map((it, idx) => <li key={idx}>{it.name || it}</li>)}
+          </ul>
+          <button className="gi-btn gi-btn-primary" onClick={handleReset}>Voltar</button>
+        </div>
+      )}
+
+    </div>
+  );
+}

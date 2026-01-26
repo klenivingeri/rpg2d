@@ -1,0 +1,72 @@
+:root{
+  --gi-z: 10;
+  --btn-size: 56px;
+}
+
+.game-interface{
+  position:absolute;
+  top:0;
+  left:0;
+  width:100vw;
+  height:100vh;
+  z-index:var(--gi-z);
+  pointer-events:none; /* default none, child panels enable when needed */
+  display:grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: repeat(12, 1fr);
+}
+
+/* Init panel centered */
+.gi-init{
+  grid-column: 3 / span 8;
+  grid-row: 3 / span 8;
+  background: rgba(0,0,0,0.7);
+  color:#fff;
+  border-radius:12px;
+  padding:20px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  align-items:center;
+  justify-content:center;
+}
+
+.gi-equip-slots{display:flex;gap:10px}
+.slot{width:96px;height:96px;background:#222;border-radius:8px;display:flex;align-items:center;justify-content:center}
+
+.gi-placeholders{display:flex;gap:10px}
+.placeholder{width:180px;height:80px;background:#333;border-radius:8px;display:flex;align-items:center;justify-content:center}
+
+.gi-start{font-size:18px;padding:12px 24px;border-radius:10px}
+
+/* Progress bar area (L1C6 - L2C7) => approx columns 6-7 rows 1-2 */
+.gi-progress{grid-column:6 / span 2;grid-row:1 / span 2;align-self:start;justify-self:center;pointer-events:auto}
+.gi-progress-bar{width:220px;height:18px;background:#222;border-radius:10px;overflow:hidden}
+.gi-progress-fill{height:100%;background:linear-gradient(90deg,#ffd54f,#ff8a65)}
+.gi-progress-label{color:#fff;font-size:12px;margin-bottom:6px;text-align:center}
+
+/* Buttons positions */
+.gi-top-right{grid-column:12 / span 1;grid-row:1 / span 1;justify-self:end;align-self:start;margin:12px}
+.gi-bottom-left{grid-column:1 / span 1;grid-row:12 / span 1;justify-self:start;align-self:end;margin:12px}
+.gi-bottom-right{grid-column:12 / span 1;grid-row:12 / span 1;justify-self:end;align-self:end;margin:12px}
+
+.gi-btn{pointer-events:auto;background:#444;color:#fff;border:none;padding:10px 14px;border-radius:12px;font-size:16px}
+.gi-btn-large{width:var(--btn-size);height:var(--btn-size);border-radius:14px;font-size:14px}
+.gi-btn-primary{background:#2ecc71}
+.gi-btn-ghost{background:transparent;color:#888;border:1px solid #444;padding:6px 10px}
+
+/* Modal */
+.gi-modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:1000}
+.gi-modal::backdrop{background:rgba(0,0,0,0.6)}
+.gi-modal-content{width:min(560px,90vw);background:#111;padding:16px;border-radius:10px;border:1px solid #333;color:#fff}
+.gi-modal-header{display:flex;justify-content:space-between;align-items:center}
+.gi-modal-body{margin-top:12px}
+
+/* Result panel */
+.gi-result{grid-column:4 / span 6;grid-row:4 / span 6;background:rgba(0,0,0,0.8);color:#fff;padding:20px;border-radius:12px}
+
+/* Responsivo: botões maiores no mobile */
+@media (max-width:600px){
+  :root{--btn-size:72px}
+  .gi-start{font-size:20px;padding:14px 26px}
+}

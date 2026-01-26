@@ -8,11 +8,15 @@ import { Preloader } from './scenes/Preloader';
 // Find out more information about the Game Config at:
 // https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
 const config = {
-    type: Phaser.AUTO,
-    width: 1024,
-    height: 768,
+    type: Phaser.CANVAS,
     parent: 'game-container',
     backgroundColor: '#028af8',
+    scale: {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: window.innerWidth,
+        height: window.innerHeight
+    },
     physics: {
         default: 'arcade',
         arcade: {
