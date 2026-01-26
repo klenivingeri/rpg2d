@@ -78,7 +78,8 @@ export default function GameInterface({ phaserRef }) {
     }
 
     if (targetEl) {
-      targetEl.style.display = shouldHide ? 'none' : '';
+      // usar visibility em vez de display para manter o canvas no DOM
+      targetEl.style.visibility = shouldHide ? 'hidden' : 'visible';
     }
 
     // Se estivermos na tela de preparação, pause as scenes ativas para economizar processamento
@@ -96,20 +97,28 @@ export default function GameInterface({ phaserRef }) {
 
     return () => {
       // ao desmontar, garante que mostramos novamente
-      if (targetEl) targetEl.style.display = '';
+      if (targetEl) targetEl.style.visibility = 'visible';
     };
   }, [gameState.view, menuOpen, statsOpen, invOpen, phaserRef]);
 
   const pauseGame = () => {
     try {
       const g = phaserRef?.current?.game;
-      if (g) g.scene.pause();
+      if (g && g.scene && typeof g.scene.getScenes === 'function') {
+        const active = g.scene.getScenes(true) || [];
+        active.forEach(s => { try { g.scene.pause(s.scene.key); } catch (e) { /* ignore */ } });
+      }
     } catch (e) { console.warn(e); }
   };
   const resumeGame = () => {
     try {
       const g = phaserRef?.current?.game;
-      if (g) g.scene.resume();
+      if (g && g.scene && typeof g.scene.getScenes === 'function') {
+        const paused = g.scene.getScenes(false) || [];
+        // resume scenes that are not running (getScenes(false) returns all scenes?)
+        // safer: resume the Game scene if present
+        try { if (g.scene.isActive && !g.scene.isActive('Game')) g.scene.resume('Game'); } catch (e) { /* ignore */ }
+      }
     } catch (e) { console.warn(e); }
   };
 
@@ -123,10 +132,11 @@ export default function GameInterface({ phaserRef }) {
   // iniciar jogo
   const start = () => {
     // mostra o canvas e inicia ou resume a cena 'Game'
+    // mostra o canvas e inicia ou resume a cena 'Game'
     try {
       const g = phaserRef?.current?.game;
       const container = document.getElementById('game-container');
-      if (container) container.style.display = '';
+      if (container) container.style.visibility = 'visible';
       if (g && g.scene) {
         try {
           // se a cena já estiver ativa, apenas resume
@@ -137,6 +147,18 @@ export default function GameInterface({ phaserRef }) {
             // caso não exista ou não esteja ativa, inicia a cena
             g.scene.start('Game');
           }
+
+          // Forçar resize do ScaleManager / disparar um resize global para atualizar viewports
+          try {
+            if (g.scale && typeof g.scale.resize === 'function') {
+              g.scale.resize(window.innerWidth, window.innerHeight);
+            }
+            // também dispara event para que cenas respondam ao resize
+            window.dispatchEvent(new Event('resize'));
+          } catch (e2) {
+            console.warn('resize failed', e2);
+          }
+
         } catch (e) {
           // fallback: tentar start sempre
           try { g.scene.start('Game'); } catch (err) { console.warn(err); }
@@ -147,12 +169,16 @@ export default function GameInterface({ phaserRef }) {
     setView('hud');
   };
 
+  
+
   // resetar para init
   const handleReset = () => { reset(); setView('init'); };
 
   // layout grid 12x12; usamos classes para posicionar os elementos
   return (
     <div className="game-interface">
+
+      {/* loader removed */}
 
       {/* VIEW: INIT */}
       {gameState.view === 'init' && (
@@ -196,7 +222,7 @@ export default function GameInterface({ phaserRef }) {
           </Modal>
 
           <Modal open={statsOpen} title="Status" onClose={closeStats}>
-            <p>HP/MP/Level (placeholder)</p>
+            <p>HP/MP (placeholder)</p>
           </Modal>
 
           <Modal open={invOpen} title="Inventário" onClose={closeInv}>

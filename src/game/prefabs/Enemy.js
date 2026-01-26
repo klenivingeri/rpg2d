@@ -1,4 +1,5 @@
 import { fireProjectile } from './Projectile';
+import { Debug } from '../Debug';
 
 export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
 {
@@ -26,7 +27,7 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
     const sel = scene.add.graphics({ x: 0, y: 0 });
     sel.lineStyle(3, 0xffff00, 1);
     sel.strokeCircle(x, y, radius + 6);
-    sel.setVisible(false);
+    sel.setVisible(!!Debug.showAreas ? true : false);
     sel.setDepth(10);
 
     enemy._selectionGraphics = sel;
@@ -41,15 +42,18 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
     const playerRange = (scene.player && scene.player.rangeRadius) ? scene.player.rangeRadius : 60;
     enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier));
     enemy.attackCircle = scene.add.circle(x, y, enemy.attackRadius, 0xff0000, 0.08);
+    enemy.attackCircle.setVisible(!!Debug.showAreas);
 
     // followRadius: area in which enemy will start following the player (larger)
     enemy.followRadius = Math.max(enemy.attackRadius * 2, enemy.attackRadius + 80);
     enemy.followCircle = scene.add.circle(x, y, enemy.followRadius, 0xff8800, 0.04);
+    enemy.followCircle.setVisible(!!Debug.showAreas);
     // followGraphics: contorno visível da arena de perseguição (mais legível que fill fraco)
     enemy._followGraphics = scene.add.graphics({ x: 0, y: 0 });
     enemy._followGraphics.lineStyle(2, 0xff8800, 0.7);
     enemy._followGraphics.strokeCircle(x, y, enemy.followRadius);
     enemy._followGraphics.setDepth(5);
+    enemy._followGraphics.setVisible(!!Debug.showAreas);
 
     enemy.fireRate = 800; // ms
     enemy.lastFired = 0;
@@ -73,11 +77,13 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
         if (this.attackCircle)
         {
             this.attackCircle.setPosition(this.x, this.y);
+            this.attackCircle.setVisible(!!Debug.showAreas);
         }
 
         if (this.followCircle)
         {
             this.followCircle.setPosition(this.x, this.y);
+            this.followCircle.setVisible(!!Debug.showAreas);
         }
 
         if (this._followGraphics)
@@ -85,6 +91,7 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
             this._followGraphics.clear();
             this._followGraphics.lineStyle(2, 0xff8800, 0.7);
             this._followGraphics.strokeCircle(this.x, this.y, this.followRadius);
+            this._followGraphics.setVisible(!!Debug.showAreas);
         }
     };
 
@@ -169,9 +176,9 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
         {
             enemy._selectionGraphics.destroy();
         }
-        if (enemy.rangeCircle)
+        if (enemy.attackCircle)
         {
-            enemy.rangeCircle.destroy();
+            enemy.attackCircle.destroy();
         }
 
         if (enemy.followCircle)

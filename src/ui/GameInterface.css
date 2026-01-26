@@ -70,3 +70,42 @@
   :root{--btn-size:72px}
   .gi-start{font-size:20px;padding:14px 26px}
 }
+
+/* Loader overlay */
+.gi-loading-overlay{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,0.6);
+  z-index:2000;
+}
+.gi-loader{
+  width:min(420px,80vw);
+  padding:18px;
+  background:#111;
+  border-radius:10px;
+  border:1px solid #333;
+  color:#fff;
+  text-align:center;
+}
+.gi-loader-bar{
+  width:100%;
+  height:12px;
+  background:#222;
+  border-radius:8px;
+  overflow:hidden;
+  margin-top:12px;
+}
+.gi-loader-progress{
+  height:100%;
+  width:30%;
+  background:linear-gradient(90deg,#4fc3f7,#81c784);
+  border-radius:8px;
+  animation: gi-loader-move 1.1s linear infinite;
+}
+@keyframes gi-loader-move{
+  0%{transform: translateX(-100%)}
+  100%{transform: translateX(300%)}
+}

@@ -6,7 +6,6 @@ import GameInterface, { GameUIProvider } from './ui/GameInterface';
 
 function App ()
 {
-    // The sprite can only be moved in the MainMenu Scene
     const [canMoveSprite, setCanMoveSprite] = useState(true);
     
     //  References to the PhaserGame component (game and scene are exposed)
@@ -26,15 +25,9 @@ function App ()
     const moveSprite = () => {
 
         const scene = phaserRef.current.scene;
-
-        if (scene && scene.scene.key === 'MainMenu')
+        if (scene && typeof scene.moveLogo === 'function')
         {
-            // Get the update logo position
-            scene.moveLogo(({ x, y }) => {
-
-                setSpritePosition({ x, y });
-
-            });
+            scene.moveLogo(({ x, y }) => setSpritePosition({ x, y }));
         }
     }
 
@@ -66,9 +59,7 @@ function App ()
 
     // Event emitted from the PhaserGame component
     const currentScene = (scene) => {
-
-        setCanMoveSprite(scene.scene.key !== 'MainMenu');
-        
+        // no-op: MainMenu removed
     }
 
     return (

@@ -141,9 +141,22 @@ export class Game extends Scene
             cam.setDeadzone(dzW, dzH);
         };
 
+        // Bind handler so we can remove it later on shutdown
+        this._onResize = updateCameraDeadzone.bind(this);
+
         updateCameraDeadzone();
-        window.addEventListener('resize', updateCameraDeadzone);
-        this.scale.on('resize', updateCameraDeadzone);
+        window.addEventListener('resize', this._onResize);
+        this.scale.on('resize', this._onResize);
+
+        // Remove listeners when scene shuts down to avoid duplicate handlers
+        this.events.on('shutdown', () => {
+            try {
+                window.removeEventListener('resize', this._onResize);
+            } catch (e) { /* ignore */ }
+            try {
+                this.scale.off('resize', this._onResize);
+            } catch (e) { /* ignore */ }
+        });
 
         EventBus.emit('current-scene-ready', this);
     }
@@ -173,8 +186,13 @@ export class Game extends Scene
 
     changeScene ()
     {
-        // Em vez de iniciar a cena visual de GameOver, notifica a UI React
+        // Notifica a UI React que houve game over e para/destroi a cena atual
         EventBus.emit('game-over');
+        try {
+            this.scene.stop();
+        } catch (e) {
+            // ignore
+        }
     }
 
 }

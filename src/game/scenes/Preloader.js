@@ -41,7 +41,7 @@ export class Preloader extends Scene
         //  When all the assets have loaded, it's often worth creating global objects here that the rest of the game can use.
         //  For example, you can define global animations here, so we can use them in other scenes.
 
-        // Após carregar, inicia o MainMenu por padrão (não inicia o Game automaticamente)
-        this.scene.start('MainMenu');
+        // Após carregar, inicia o Game diretamente (MainMenu removido)
+        this.scene.start('Game');
     }
 }

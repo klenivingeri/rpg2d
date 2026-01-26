@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { fireProjectile } from './Projectile';
+import { Debug } from '../Debug';
 
 export default class Player
 {
@@ -24,6 +25,7 @@ export default class Player
 
         this.rangeRadius = 3 * this.width; // regra: 3x largura do player
         this.rangeCircle = scene.add.circle(x, y, this.rangeRadius, 0x0000ff, 0.12);
+        this.rangeCircle.setVisible(!!Debug.showAreas);
 
         this.targetPoint = null;
         this.selectedEnemy = null; // enemy we're currently targeting/attacking
@@ -112,6 +114,7 @@ export default class Player
     {
         // atualizar visual do range
         this.rangeCircle.setPosition(this.sprite.x, this.sprite.y);
+        this.rangeCircle.setVisible(!!Debug.showAreas);
 
         // chegada ao targetPoint
         if (this.targetPoint)
