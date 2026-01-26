@@ -37,10 +37,19 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
     };
 
     // enemy perception / combat properties
-    // enemy should have smaller range than the player; if player exists, base on that
+    // enemy should have smaller attack range than the player; if player exists, base on that
     const playerRange = (scene.player && scene.player.rangeRadius) ? scene.player.rangeRadius : 60;
-    enemy.rangeRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier));
-    enemy.rangeCircle = scene.add.circle(x, y, enemy.rangeRadius, 0xff0000, 0.08);
+    enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier));
+    enemy.attackCircle = scene.add.circle(x, y, enemy.attackRadius, 0xff0000, 0.08);
+
+    // followRadius: area in which enemy will start following the player (larger)
+    enemy.followRadius = Math.max(enemy.attackRadius * 2, enemy.attackRadius + 80);
+    enemy.followCircle = scene.add.circle(x, y, enemy.followRadius, 0xff8800, 0.04);
+    // followGraphics: contorno visível da arena de perseguição (mais legível que fill fraco)
+    enemy._followGraphics = scene.add.graphics({ x: 0, y: 0 });
+    enemy._followGraphics.lineStyle(2, 0xff8800, 0.7);
+    enemy._followGraphics.strokeCircle(x, y, enemy.followRadius);
+    enemy._followGraphics.setDepth(5);
 
     enemy.fireRate = 800; // ms
     enemy.lastFired = 0;
@@ -48,6 +57,8 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
     // chase properties
     enemy.chaseSpeed = 120;
     enemy.isChasing = false;
+    // se o inimigo já "viu" o player, continua perseguindo mesmo que o player saia da followRadius
+    enemy.hasSeenPlayer = false;
 
     // ensure selection graphic and range circle follow enemy
     enemy.updateSelectionPosition = function ()
@@ -59,13 +70,25 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
             this._selectionGraphics.strokeCircle(this.x, this.y, radius + 6);
         }
 
-        if (this.rangeCircle)
+        if (this.attackCircle)
         {
-            this.rangeCircle.setPosition(this.x, this.y);
+            this.attackCircle.setPosition(this.x, this.y);
+        }
+
+        if (this.followCircle)
+        {
+            this.followCircle.setPosition(this.x, this.y);
+        }
+
+        if (this._followGraphics)
+        {
+            this._followGraphics.clear();
+            this._followGraphics.lineStyle(2, 0xff8800, 0.7);
+            this._followGraphics.strokeCircle(this.x, this.y, this.followRadius);
         }
     };
 
-    // basic AI: if player enters range, shoot at the player
+    // basic AI: follow when inside followRadius, shoot when inside attackRadius
     enemy.update = function (time)
     {
         if (!scene.player || !scene.player.sprite || !scene.player.sprite.active) return;
@@ -73,11 +96,32 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
         const px = scene.player.sprite.x;
         const py = scene.player.sprite.y;
         const d = Phaser.Math.Distance.Between(this.x, this.y, px, py);
-        // always chase the player (stop at a close distance), but only fire when inside range
-        const stopDistance = 24;
-        if (d > stopDistance)
+
+        // marca como visto se o player entrar na follow area
+        if (d <= this.followRadius)
         {
-            // compute normalized direction toward player and set velocity
+            this.hasSeenPlayer = true;
+        }
+
+        // determine behavior based on distance
+        if (d <= this.attackRadius)
+        {
+            // inside attack radius: stop and fire
+            if (this.body && this.body.setVelocity)
+            {
+                this.body.setVelocity(0, 0);
+            }
+            this.isChasing = false;
+
+            if (time > this.lastFired + this.fireRate)
+            {
+                this.lastFired = time;
+                fireProjectile(scene, this.x, this.y, scene.player.sprite, scene.player.sprite);
+            }
+        }
+        else if (d <= this.followRadius || this.hasSeenPlayer)
+        {
+            // inside follow area: pursue the player
             let dx = px - this.x;
             let dy = py - this.y;
             const len = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -91,21 +135,12 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
         }
         else
         {
+            // outside follow area: idle
             if (this.body && this.body.setVelocity)
             {
                 this.body.setVelocity(0, 0);
             }
             this.isChasing = false;
-        }
-
-        // firing behavior: only when within perception range
-        if (d <= this.rangeRadius)
-        {
-            if (time > this.lastFired + this.fireRate)
-            {
-                this.lastFired = time;
-                fireProjectile(scene, this.x, this.y, scene.player.sprite, scene.player.sprite);
-            }
         }
     };
 
@@ -137,6 +172,16 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
         if (enemy.rangeCircle)
         {
             enemy.rangeCircle.destroy();
+        }
+
+        if (enemy.followCircle)
+        {
+            enemy.followCircle.destroy();
+        }
+
+        if (enemy._followGraphics)
+        {
+            enemy._followGraphics.destroy();
         }
 
         if (scene && scene.player && scene.player.selectedEnemy === enemy)
