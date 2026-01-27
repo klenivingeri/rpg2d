@@ -4,6 +4,7 @@ import { Scene } from 'phaser';
 import Player from '../prefabs/Player';
 import Joystick from '../inputs/Joystick';
 import { createEnemy } from '../prefabs/Enemy';
+import { Debug } from '../Debug';
 
 export class Game extends Scene
 {
@@ -36,7 +37,11 @@ export class Game extends Scene
         };
         EventBus.on('joystick-changed', this._onJoystickChanged);
         this.cameras.main.setBackgroundColor(0x00aa55);
-
+        
+        // gráfico para debug (grid + deadzone) fixo na tela
+        this.debugGraphics = this.add.graphics();
+        this.debugGraphics.setScrollFactor(0);
+        this.debugGraphics.setDepth(1000);
         // disable right-click context menu on the game canvas
         if (this.input && this.input.mouse && typeof this.input.mouse.disableContextMenu === 'function')
         {
@@ -159,11 +164,39 @@ export class Game extends Scene
             const w = window.innerWidth;
             const h = window.innerHeight;
 
-            const dzW = Math.floor(w * 0.4);
-            const dzH = Math.floor(h * 0.4);
+            // margens de 40% a partir de cada borda -> deadzone central reduzida
+            const marginX = Math.floor(w * 0.4);
+            const marginY = Math.floor(h * 0.4);
+            const dzW = Math.max(0, Math.floor(w - marginX * 2));
+            const dzH = Math.max(0, Math.floor(h - marginY * 2));
 
             cam.setViewport(0, 0, w, h);
             cam.setDeadzone(dzW, dzH);
+            // desenha grid + borda somente se Debug.showAreas for true
+            if (this.debugGraphics)
+            {
+                this.debugGraphics.clear();
+                if (Debug.showAreas)
+                {
+                    // grid (100px)
+                    const gridSpacing = 100;
+                    this.debugGraphics.lineStyle(1, 0x888888, 0.25);
+                    for (let x = 0; x <= w; x += gridSpacing)
+                    {
+                        this.debugGraphics.strokeLineShape(new Phaser.Geom.Line(x, 0, x, h));
+                    }
+                    for (let y = 0; y <= h; y += gridSpacing)
+                    {
+                        this.debugGraphics.strokeLineShape(new Phaser.Geom.Line(0, y, w, y));
+                    }
+
+                    // deadzone border
+                    const dzX = marginX;
+                    const dzY = marginY;
+                    this.debugGraphics.lineStyle(2, 0xffff00, 1);
+                    this.debugGraphics.strokeRect(dzX, dzY, dzW, dzH);
+                }
+            }
             // diminuir um pouco o zoom em telas pequenas (mobile)
             const worldScale = (w < 768) ? WORLD_SCALE_MOBILE : WORLD_SCALE_DESKTOP;
             cam.setZoom(worldScale);
@@ -185,6 +218,7 @@ export class Game extends Scene
                 this.scale.off('resize', this._onResize);
             } catch (e) { /* ignore */ }
             try { EventBus.removeListener('joystick-changed', this._onJoystickChanged); } catch (e) { /* ignore */ }
+            try { if (this.deadzoneBorder) { this.deadzoneBorder.destroy(); } } catch (e) { /* ignore */ }
         });
 
         // create joystick instance (lazy) so Player can reference it; visibility controlled by `joystickEnabled`

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { Debug } from '../Debug';
 
 export default class Joystick {
     constructor(scene, opts = {}) {
@@ -9,6 +10,7 @@ export default class Joystick {
         this.thumbRadius = opts.thumbRadius || 32;
         this.maxDistance = this.baseRadius - this.thumbRadius * 0.5;
         this.alpha = (typeof opts.alpha !== 'undefined') ? opts.alpha : 0.35;
+        this.deadzoneRadius = (typeof opts.deadzoneRadius !== 'undefined') ? opts.deadzoneRadius : Math.floor(this.thumbRadius * 0.4);
 
         this._pointerId = null;
         this._inputVector = { x: 0, y: 0 };
@@ -25,10 +27,23 @@ export default class Joystick {
         this.base.setScrollFactor(0);
         this.thumb.setScrollFactor(0);
         this.base.setDepth(1000);
-        this.thumb.setDepth(1001);
+
+        // border graphics for active press (white) - sits above base and below thumb
+        this._baseBorder = this.scene.add.graphics();
+        this._baseBorder.setScrollFactor(0);
+        this._baseBorder.setDepth(1001);
+
+        this.thumb.setDepth(1002);
+
+        // debug graphics for showing deadzone border
+        this._debugGraphics = this.scene.add.graphics();
+        this._debugGraphics.setScrollFactor(0);
+        this._debugGraphics.setDepth(1003);
 
         // initially hide; show only when enabled
         this.setVisible(this.enabled);
+        // ensure border is drawn immediately on creation
+        this._updateBaseBorder();
 
         // input listeners
         this._onDown = this._onDown.bind(this);
@@ -50,11 +65,14 @@ export default class Joystick {
         try { this.scene.input.off('pointerup', this._onUp); } catch (e) {}
         try { this.scene.scale.off('resize', this._onResize); } catch (e) {}
         try { this.base.destroy(); this.thumb.destroy(); } catch (e) {}
+        try { this._baseBorder.destroy(); } catch (e) {}
+        try { this._debugGraphics.destroy(); } catch (e) {}
     }
 
     setVisible(v) {
         this.base.setVisible(!!v);
         this.thumb.setVisible(!!v);
+        this._updateBaseBorder();
     }
 
     enable() { this.enabled = true; this.setVisible(true); }
@@ -67,6 +85,7 @@ export default class Joystick {
         this.baseY = Math.floor(h * 0.8);
         this.base.setPosition(this.baseX, this.baseY);
         this.thumb.setPosition(this.baseX, this.baseY);
+        this._redrawDebug();
     }
 
     _onDown(pointer) {
@@ -100,6 +119,8 @@ export default class Joystick {
         this.base.setPosition(this.baseX, this.baseY);
         this.thumb.setPosition(this.baseX, this.baseY);
         this._inputVector.x = 0; this._inputVector.y = 0;
+        this._redrawDebug();
+        this._updateBaseBorder();
     }
 
     _onMove(pointer) {
@@ -130,6 +151,8 @@ export default class Joystick {
 
         this._inputVector.x = nx * ratio;
         this._inputVector.y = ny * ratio;
+        this._redrawDebug();
+        this._updateBaseBorder();
     }
 
     _onUp(pointer) {
@@ -146,6 +169,30 @@ export default class Joystick {
         this._inputVector.x = 0;
         this._inputVector.y = 0;
         this.thumb.setPosition(this.base.x, this.base.y);
+        this._redrawDebug();
+        this._updateBaseBorder();
+    }
+
+    _redrawDebug() {
+        try {
+            this._debugGraphics.clear();
+            if (!Debug.showAreas) return;
+            if (!this.base.visible) return;
+            // draw deadzone border
+            this._debugGraphics.lineStyle(2, 0xffff00, 1);
+            this._debugGraphics.strokeCircle(this.base.x, this.base.y, this.deadzoneRadius);
+        } catch (e) { /* ignore */ }
+    }
+
+    _updateBaseBorder() {
+        try {
+            this._baseBorder.clear();
+            if (!this.base.visible) return;
+            // draw white border around base circle; semi-transparent when inactive
+            const alpha = this.isActive ? 1 : 0.5;
+            this._baseBorder.lineStyle(3, 0xffffff, alpha);
+            this._baseBorder.strokeCircle(this.base.x, this.base.y, this.baseRadius);
+        } catch (e) { /* ignore */ }
     }
 
     // returns object { x, y } normalized in range [-1..1]

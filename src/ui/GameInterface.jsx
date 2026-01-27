@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import './GameInterface.css';
 import { EventBus } from '../game/EventBus';
+import { Debug } from '../game/Debug';
 
 // Contexto global para UI do jogo
 const GameUIContext = createContext(null);
@@ -100,7 +101,9 @@ function Modal({ open, title, onClose, children }) {
 // GameInterface principal
 export default function GameInterface({ phaserRef }) {
   const { gameState, setView, reset, toggleAutoFire, toggleJoystick, setGameState } = useGameUI();
-  const [gridVisible, setGridVisible] = useState(false);
+  const [gridVisible, setGridVisible] = useState(() => {
+    try { return !!Debug.showAreas; } catch (e) { return false; }
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [invOpen, setInvOpen] = useState(false);
@@ -230,13 +233,17 @@ export default function GameInterface({ phaserRef }) {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // escuta alterações de `Debug.showAreas` (emitido por Debug.setShowAreas/toggleShowAreas)
+  useEffect(() => {
+    const onDebugToggle = (v) => {
+      setGridVisible(!!v);
+    };
+    try { EventBus.on('debug-showAreas-changed', onDebugToggle); } catch (e) { /* ignore */ }
+    return () => { try { EventBus.removeListener('debug-showAreas-changed', onDebugToggle); } catch (e) { /* ignore */ } };
+  }, []);
+
   return (
     <div className={"game-interface" + (gridVisible ? ' gi-grid-visible' : '')}>
-
-      {/* Toggle rápido do grid (debug) */}
-      <button className="gi-grid-toggle" onClick={() => setGridVisible(v => !v)} aria-pressed={gridVisible}>{gridVisible ? 'Grid: ON' : 'Grid: OFF'}</button>
-
-      {/* loader removed */}
 
       {/* VIEW: INIT */}
       {gameState.view === 'init' && (
