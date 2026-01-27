@@ -10,20 +10,33 @@ export function useGameUI() {
 }
 
 export function GameUIProvider({ children }) {
-  const [gameState, setGameState] = useState({
-    view: 'init', // 'init' | 'hud' | 'result'
-    gold: 0,
-    monstersKilled: 0,
-    totalMonsters: 10,
-    inventory: [],
-    equippedItems: { weapon: null, armor: null, accessory: null },
-    skills: []
+  const [gameState, setGameState] = useState(() => {
+    // tentar carregar preferências do localStorage
+    let storedAutoFire = false;
+    let storedJoystick = false;
+    try {
+      const v = localStorage.getItem('gi.autoFire');
+      if (v !== null) storedAutoFire = v === 'true';
+      const j = localStorage.getItem('gi.joystick');
+      if (j !== null) storedJoystick = j === 'true';
+    } catch (e) { /* ignore */ }
+    return {
+      view: 'init', // 'init' | 'hud' | 'result'
+      gold: 0,
+      monstersKilled: 0,
+      totalMonsters: 10,
+      inventory: [],
+      equippedItems: { weapon: null, armor: null, accessory: null },
+      skills: [],
+      autoFire: storedAutoFire,
+      joystick: storedJoystick
+    };
   });
 
   const setView = (v) => setGameState(s => ({ ...s, view: v }));
   const addGold = (amount) => setGameState(s => ({ ...s, gold: s.gold + amount }));
   const addKill = () => setGameState(s => ({ ...s, monstersKilled: s.monstersKilled + 1 }));
-  const reset = () => setGameState({ view: 'init', gold: 0, monstersKilled: 0, totalMonsters: 10, inventory: [], equippedItems: { weapon: null, armor: null, accessory: null }, skills: [] });
+  const reset = () => setGameState({ view: 'init', gold: 0, monstersKilled: 0, totalMonsters: 10, inventory: [], equippedItems: { weapon: null, armor: null, accessory: null }, skills: [], autoFire: false });
 
   // Ouve evento 'game-over' vindo do Phaser e muda para a view de resultado
   useEffect(() => {
@@ -31,8 +44,38 @@ export function GameUIProvider({ children }) {
     EventBus.on('game-over', onGameOver);
     return () => { EventBus.removeListener('game-over', onGameOver); };
   }, []);
+  // emitir evento global quando alterar autoFire para que o jogo (Phaser) reaja
+  const _toggleAutoFire = () => {
+    setGameState(s => {
+      const next = !s.autoFire;
+      try { localStorage.setItem('gi.autoFire', next ? 'true' : 'false'); } catch (e) { /* ignore */ }
+      try { EventBus.emit('auto-fire-changed', next); } catch (e) { /* ignore */ }
+      return { ...s, autoFire: next };
+    });
+  };
+
+  // emitir evento global quando alterar joystick (habilitar/desabilitar virtual joystick)
+  const _toggleJoystick = () => {
+    setGameState(s => {
+      const next = !s.joystick;
+      try { localStorage.setItem('gi.joystick', next ? 'true' : 'false'); } catch (e) { /* ignore */ }
+      try { EventBus.emit('joystick-changed', next); } catch (e) { /* ignore */ }
+      return { ...s, joystick: next };
+    });
+  };
+
+  // emitir evento sempre que `autoFire` mudar (inclui emissão inicial após carregar do localStorage)
+  useEffect(() => {
+    try { EventBus.emit('auto-fire-changed', gameState.autoFire); } catch (e) { /* ignore */ }
+  }, [gameState.autoFire]);
+
+  // emitir evento sempre que `joystick` mudar
+  useEffect(() => {
+    try { EventBus.emit('joystick-changed', gameState.joystick); } catch (e) { /* ignore */ }
+  }, [gameState.joystick]);
+
   return (
-    <GameUIContext.Provider value={{ gameState, setGameState, setView, addGold, addKill, reset }}>
+    <GameUIContext.Provider value={{ gameState, setGameState, setView, addGold, addKill, reset, toggleAutoFire: _toggleAutoFire, toggleJoystick: _toggleJoystick }}>
       {children}
     </GameUIContext.Provider>
   );
@@ -56,7 +99,8 @@ function Modal({ open, title, onClose, children }) {
 
 // GameInterface principal
 export default function GameInterface({ phaserRef }) {
-  const { gameState, setView, reset } = useGameUI();
+  const { gameState, setView, reset, toggleAutoFire, toggleJoystick, setGameState } = useGameUI();
+  const [gridVisible, setGridVisible] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [invOpen, setInvOpen] = useState(false);
@@ -175,8 +219,22 @@ export default function GameInterface({ phaserRef }) {
   const handleReset = () => { reset(); setView('init'); };
 
   // layout grid 12x12; usamos classes para posicionar os elementos
+  useEffect(() => {
+    const handler = (e) => {
+      // tecla G para alternar grid
+      if (e.key === 'g' || e.key === 'G') {
+        setGridVisible(v => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
-    <div className="game-interface">
+    <div className={"game-interface" + (gridVisible ? ' gi-grid-visible' : '')}>
+
+      {/* Toggle rápido do grid (debug) */}
+      <button className="gi-grid-toggle" onClick={() => setGridVisible(v => !v)} aria-pressed={gridVisible}>{gridVisible ? 'Grid: ON' : 'Grid: OFF'}</button>
 
       {/* loader removed */}
 
@@ -195,6 +253,11 @@ export default function GameInterface({ phaserRef }) {
           </div>
           <button className="gi-btn gi-btn-primary gi-start" onClick={start}>INICIAR</button>
         </div>
+      )}
+
+      {/* Menu top-right na tela init (L1C12) */}
+      {gameState.view === 'init' && (
+        <button className="gi-btn gi-btn-large gi-top-right" onClick={openMenu}>Menu</button>
       )}
 
       {/* VIEW: HUD */}
@@ -216,21 +279,6 @@ export default function GameInterface({ phaserRef }) {
 
           {/* Inventory bottom-right L12C12 */}
           <button className="gi-btn gi-btn-large gi-bottom-right" onClick={openInv}>Inventário</button>
-
-          <Modal open={menuOpen} title="Opções" onClose={closeMenu}>
-            <p>Opções do jogo (placeholder)</p>
-          </Modal>
-
-          <Modal open={statsOpen} title="Status" onClose={closeStats}>
-            <p>HP/MP (placeholder)</p>
-          </Modal>
-
-          <Modal open={invOpen} title="Inventário" onClose={closeInv}>
-            <p>Itens coletados:</p>
-            <ul>
-              {gameState.inventory.map((it, idx) => <li key={idx}>{it.name || it}</li>)}
-            </ul>
-          </Modal>
         </>
       )}
 
@@ -246,6 +294,32 @@ export default function GameInterface({ phaserRef }) {
           <button className="gi-btn gi-btn-primary" onClick={handleReset}>Voltar</button>
         </div>
       )}
+
+      {/* Modals disponíveis para todas as views (reaproveita conteúdo do HUD) */}
+      <Modal open={menuOpen} title="Opções" onClose={closeMenu}>
+        <div className="gi-menu-options">
+          <label className="gi-option">
+            <input type="checkbox" checked={gameState.autoFire} onChange={toggleAutoFire} />
+            <span>Tiro automático</span>
+          </label>
+          <label className="gi-option">
+            <input type="checkbox" checked={gameState.joystick} onChange={toggleJoystick} />
+            <span>Joystick</span>
+          </label>
+          <p style={{marginTop:8}}>Opções do jogo (placeholder)</p>
+        </div>
+      </Modal>
+
+      <Modal open={statsOpen} title="Status" onClose={closeStats}>
+        <p>HP/MP (placeholder)</p>
+      </Modal>
+
+      <Modal open={invOpen} title="Inventário" onClose={closeInv}>
+        <p>Itens coletados:</p>
+        <ul>
+          {gameState.inventory.map((it, idx) => <li key={idx}>{it.name || it}</li>)}
+        </ul>
+      </Modal>
 
     </div>
   );

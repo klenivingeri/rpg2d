@@ -16,6 +16,40 @@
   grid-template-rows: repeat(12, 1fr);
 }
 
+/* Grid visualization helper: adiciona linhas e bordas das células para debugging/visualização */
+.game-interface.gi-grid-visible::before{
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  /* linhas verticais e horizontais em tom de verde */
+  background-image:
+    linear-gradient(to right, rgba(46,204,113,0.16) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(46,204,113,0.16) 1px, transparent 1px);
+  background-size: calc(100% / 12) 100%, 100% calc(100% / 12);
+  background-repeat: repeat, repeat;
+  /* borda externa verde mais visível */
+  box-shadow: inset 0 0 0 1px rgba(46,204,113,0.35);
+  mix-blend-mode: overlay;
+}
+
+/* Toggle do grid (botão de debug) */
+.gi-grid-toggle{
+  position:fixed;
+  top:10px;
+  left:10px;
+  z-index:10002;
+  pointer-events:auto;
+  background:rgba(0,0,0,0.6);
+  color:#fff;
+  border:1px solid rgba(255,255,255,0.08);
+  padding:6px 8px;
+  border-radius:8px;
+  font-size:12px;
+}
+.gi-grid-toggle:active{transform:translateY(1px)}
+
 /* Init panel centered */
 .gi-init{
   grid-column: 3 / span 8;
@@ -56,9 +90,15 @@
 .gi-btn-ghost{background:transparent;color:#888;border:1px solid #444;padding:6px 10px}
 
 /* Modal */
-.gi-modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:1000}
+.gi-modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10050;pointer-events:auto}
 .gi-modal::backdrop{background:rgba(0,0,0,0.6)}
-.gi-modal-content{width:min(560px,90vw);background:#111;padding:16px;border-radius:10px;border:1px solid #333;color:#fff}
+.gi-modal-content{width:min(560px,90vw);background:#111;padding:16px;border-radius:10px;border:1px solid #333;color:#fff;pointer-events:auto}
+/* Garantir que botões dentro do modal sejam interativos mesmo com .game-interface pointer-events:none */
+.gi-modal, .gi-modal *{pointer-events:auto}
+
+.gi-menu-options{display:flex;flex-direction:column;gap:8px}
+.gi-option{display:flex;align-items:center;gap:10px;color:#fff}
+.gi-option input[type="checkbox"]{width:16px;height:16px}
 .gi-modal-header{display:flex;justify-content:space-between;align-items:center}
 .gi-modal-body{margin-top:12px}
 
