@@ -6,7 +6,8 @@ export function fireProjectile(scene, x, y, target, hitAgainst)
     projectile.body.setCircle(radius);
     projectile.body.setAllowGravity(false);
 
-    const speed = 500;
+    // reduzido para diminuir a velocidade dos bullets
+    const speed = 280;
     scene.physics.moveToObject(projectile, target, speed);
 
     const ttl = 3000; // ms

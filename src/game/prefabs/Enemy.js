@@ -1,6 +1,9 @@
 import { fireProjectile } from './Projectile';
 import { Debug } from '../Debug';
 
+    // aumenta a area de tiro do enemy
+    //enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier * 1.50));
+
 export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
 {
     const enemy = scene.add.circle(x, y, radius, 0xff3333);
@@ -40,7 +43,8 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
     // enemy perception / combat properties
     // enemy should have smaller attack range than the player; if player exists, base on that
     const playerRange = (scene.player && scene.player.rangeRadius) ? scene.player.rangeRadius : 60;
-    enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier));
+    // aumentar ligeiramente a área de ataque para tornar inimigos mais agressivos
+    enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier * 1.50));
     enemy.attackCircle = scene.add.circle(x, y, enemy.attackRadius, 0xff0000, 0.08);
     enemy.attackCircle.setVisible(!!Debug.showAreas);
 
@@ -93,6 +97,30 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
             this._followGraphics.strokeCircle(this.x, this.y, this.followRadius);
             this._followGraphics.setVisible(!!Debug.showAreas);
         }
+
+        // ajustar depth com base na proximidade ao player e na quantidade de inimigos
+        try {
+            if (scene && scene.player && scene.player.sprite)
+            {
+                const px = scene.player.sprite.x;
+                const py = scene.player.sprite.y;
+                const d = Phaser.Math.Distance.Between(this.x, this.y, px, py);
+
+                const enemiesCount = (scene.enemies && typeof scene.enemies.getLength === 'function') ? Math.max(1, scene.enemies.getLength()) : 1;
+                const worldBounds = (scene.physics && scene.physics.world && scene.physics.world.bounds) ? scene.physics.world.bounds : null;
+                const diag = worldBounds ? Math.hypot(worldBounds.width, worldBounds.height) : Math.hypot(scene.scale.width, scene.scale.height);
+                const nd = Math.min(1, d / Math.max(1, diag));
+
+                const baseDepth = 100;
+                const depthOffset = Math.round((1 - nd) * enemiesCount * 10);
+                const newDepth = baseDepth + depthOffset;
+                try { this.setDepth(newDepth); } catch (e) { /* ignore */ }
+
+                // ensure selection/follow graphics sit relative to enemy depth
+                try { if (this._selectionGraphics) this._selectionGraphics.setDepth(newDepth + 1); } catch (e) { /* ignore */ }
+                try { if (this._followGraphics) this._followGraphics.setDepth(newDepth - 1); } catch (e) { /* ignore */ }
+            }
+        } catch (e) { /* ignore */ }
     };
 
     // basic AI: follow when inside followRadius, shoot when inside attackRadius
@@ -151,6 +179,43 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
         }
     };
 
+    // small separation to avoid enemies stacking exactly on top of each other
+    // applies a tiny pushing velocity when two enemies are closer than desiredSpacing
+    const separationLogic = function () {
+        try {
+            if (!scene.enemies) return;
+            const children = scene.enemies.getChildren ? scene.enemies.getChildren() : [];
+            const desiredSpacing = radius * 2 + 10; // target min distance
+            for (const other of children) {
+                if (!other || other === this) continue;
+                const dx = this.x - other.x;
+                const dy = this.y - other.y;
+                const dist = Math.hypot(dx, dy) || 0.0001;
+                if (dist > 0 && dist < desiredSpacing) {
+                    const overlap = desiredSpacing - dist;
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                            const push = Math.min(240, overlap * 12); // cap push
+                    try {
+                        if (this.body && this.body.setVelocity) {
+                            this.body.setVelocity(this.body.velocity.x + nx * push, this.body.velocity.y + ny * push);
+                        }
+                        if (other.body && other.body.setVelocity) {
+                            other.body.setVelocity(other.body.velocity.x - nx * (push * 0.5), other.body.velocity.y - ny * (push * 0.5));
+                        }
+                    } catch (e) { /* ignore individual body failures */ }
+                }
+            }
+        } catch (e) { /* ignore */ }
+    };
+
+    // call separation each frame after update movement
+    const _origUpdate = enemy.update;
+    enemy.update = function(time) {
+        if (typeof _origUpdate === 'function') _origUpdate.call(this, time);
+        separationLogic.call(this);
+    };
+
     // custom hit handler to apply damage and flash when hit
     enemy.onHit = function (source)
     {
@@ -167,6 +232,38 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
         {
             this.destroy();
         }
+    };
+
+    // when hit by player's projectile, apply a short slow effect
+    // source is the projectile object (may be null)
+    const applySlow = function () {
+        try {
+            // cancel previous slow timer if present
+            if (this._slowTimer) {
+                try { this._slowTimer.remove(); } catch (e) { /* ignore */ }
+                this._slowTimer = null;
+            }
+
+            // store original speed once
+            if (this._originalChaseSpeed === undefined) this._originalChaseSpeed = this.chaseSpeed;
+
+            // reduce speed by 30%
+            this.chaseSpeed = Math.max(20, Math.floor((this._originalChaseSpeed || this.chaseSpeed) * 0.7));
+
+            // restore after 600ms
+            const self = this;
+            this._slowTimer = this.scene.time.addEvent({ delay: 600, callback: () => {
+                try { self.chaseSpeed = self._originalChaseSpeed || self.chaseSpeed; } catch (e) {}
+                self._slowTimer = null;
+            } });
+        } catch (e) { /* ignore */ }
+    };
+
+    // wrap existing onHit to also apply slow
+    const _origOnHit = enemy.onHit;
+    enemy.onHit = function (source) {
+        try { if (typeof _origOnHit === 'function') _origOnHit.call(this, source); } catch (e) { /* ignore */ }
+        applySlow.call(this);
     };
 
     // when enemy is destroyed, clean up selection graphic, range circle and clear player selection

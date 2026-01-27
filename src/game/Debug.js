@@ -2,7 +2,7 @@ import { EventBus } from './EventBus';
 
 export const Debug = {
   // ao setar true mostra áreas de debug: colisão, tiro, visão
-  showAreas: false
+  showAreas: true
 };
 
 export function setShowAreas(v) {
