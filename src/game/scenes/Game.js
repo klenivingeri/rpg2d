@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 import { Scene } from 'phaser';
 import Player from '../prefabs/Player';
+import Joystick from '../inputs/Joystick';
 import { createEnemy } from '../prefabs/Enemy';
 
 export class Game extends Scene
@@ -15,6 +16,25 @@ export class Game extends Scene
 
     create ()
     {
+        // estado local para saber se o joystick virtual está ativo (controlado pela UI React)
+        this.joystickEnabled = false;
+        // tentar inicializar a partir do localStorage para cobrir casos onde o React ainda
+        // não emitiu o evento 'joystick-changed' quando a cena foi criada
+        try {
+            const j = localStorage.getItem('gi.joystick');
+            if (j !== null) this.joystickEnabled = j === 'true';
+        } catch (e) { /* ignore */ }
+        // ouvir mudanças vindas do EventBus
+        this._onJoystickChanged = (v) => {
+            this.joystickEnabled = !!v;
+            // create joystick lazily if necessary
+            if (!this.joystick) {
+                this.joystick = new Joystick(this, { enabled: this.joystickEnabled });
+            } else {
+                if (this.joystickEnabled) this.joystick.enable(); else this.joystick.disable();
+            }
+        };
+        EventBus.on('joystick-changed', this._onJoystickChanged);
         this.cameras.main.setBackgroundColor(0x00aa55);
 
         // disable right-click context menu on the game canvas
@@ -50,6 +70,10 @@ export class Game extends Scene
         // pointer input: click enemy to target, otherwise move to ground point
         this.input.on('pointerdown', pointer =>
         {
+            // se joystick virtual estiver ativo, ignoramos cliques que movimentem o player
+            if (this.joystickEnabled) {
+                return;
+            }
             let clickedEnemy = null;
             for (const enemy of this.enemies.getChildren())
             {
@@ -126,9 +150,10 @@ export class Game extends Scene
 
         const followTarget = (this.player && this.player.sprite) ? this.player.sprite : this.player;
         cam.startFollow(followTarget, true, 0.1, 0.1);
-        // Aplicar zoom/scale global da câmera
-        const WORLD_SCALE = 1.3;
-        cam.setZoom(WORLD_SCALE);
+        // Aplicar zoom/scale global da câmera (ajustado dinamicamente para mobile)
+        // Valores padrão — podemos ajustar conforme necessidade
+        const WORLD_SCALE_DESKTOP = 1.3;
+        const WORLD_SCALE_MOBILE = 1.05;
 
         const updateCameraDeadzone = () => {
             const w = window.innerWidth;
@@ -139,6 +164,9 @@ export class Game extends Scene
 
             cam.setViewport(0, 0, w, h);
             cam.setDeadzone(dzW, dzH);
+            // diminuir um pouco o zoom em telas pequenas (mobile)
+            const worldScale = (w < 768) ? WORLD_SCALE_MOBILE : WORLD_SCALE_DESKTOP;
+            cam.setZoom(worldScale);
         };
 
         // Bind handler so we can remove it later on shutdown
@@ -156,13 +184,36 @@ export class Game extends Scene
             try {
                 this.scale.off('resize', this._onResize);
             } catch (e) { /* ignore */ }
+            try { EventBus.removeListener('joystick-changed', this._onJoystickChanged); } catch (e) { /* ignore */ }
         });
+
+        // create joystick instance (lazy) so Player can reference it; visibility controlled by `joystickEnabled`
+        if (!this.joystick) {
+            this.joystick = new Joystick(this, { enabled: this.joystickEnabled });
+        }
 
         EventBus.emit('current-scene-ready', this);
     }
 
     update (time, delta)
     {
+        // joystick input takes priority for mobile movement
+        if (this.joystick && this.joystick.enabled && this.joystick.isActive)
+        {
+            const inp = this.joystick.getInput();
+            if (this.player && this.player.sprite && this.player.sprite.body && (Math.abs(inp.x) > 0 || Math.abs(inp.y) > 0))
+            {
+                const speed = this.player.moveSpeed || 220;
+                const vx = inp.x * speed;
+                const vy = inp.y * speed;
+                this.player.sprite.body.setVelocity(vx, vy);
+                // cancel automatic movement/targets when using joystick
+                this.player.targetPoint = null;
+                this.player.targetEnemy = null;
+                this.player.inAttackPosition = false;
+            }
+        }
+
         if (this.player)
         {
             this.player.update(time);

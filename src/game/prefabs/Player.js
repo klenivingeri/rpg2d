@@ -153,10 +153,22 @@ export default class Player
         this.rangeCircle.setPosition(this.sprite.x, this.sprite.y);
         this.rangeCircle.setVisible(!!Debug.showAreas);
 
-        // Controle por teclas WASD (se qualquer tecla estiver pressionada, tem prioridade)
+        // Controle por joystick (mobile) ou teclas WASD (teclado tem prioridade sobre joystick)
         let movingByKeys = false;
         let vx = 0, vy = 0;
-        if (this.keys) {
+
+        // joystick input if present
+        try {
+            const joystick = (this.scene && this.scene.joystick) ? this.scene.joystick : null;
+            if (joystick && joystick.enabled && joystick.isActive) {
+                const inp = joystick.getInput();
+                vx = inp.x;
+                vy = inp.y;
+                movingByKeys = true; // treat joystick as manual input to take priority over auto movement
+            }
+        } catch (e) { /* ignore */ }
+
+        if (!movingByKeys && this.keys) {
             if (this.keys.w && this.keys.w.isDown) { vy -= 1; movingByKeys = true; }
             if (this.keys.s && this.keys.s.isDown) { vy += 1; movingByKeys = true; }
             if (this.keys.a && this.keys.a.isDown) { vx -= 1; movingByKeys = true; }
@@ -174,13 +186,13 @@ export default class Player
             this.targetPoint = null;
             this.targetEnemy = null;
             this.inAttackPosition = false;
-            // limpar seleção e evitar autofire enquanto se movimenta com teclas
+            // limpar seleção e evitar autofire enquanto se movimenta
             if (this.selectedEnemy && this.selectedEnemy.setSelected) {
                 this.selectedEnemy.setSelected(false);
             }
             this.selectedEnemy = null;
         } else {
-            // quando não há input via teclado e não temos targetPoint, garantir parada
+            // quando não há input via teclado/joystick e não temos targetPoint, garantir parada
             if (!this.targetPoint) {
                 if (this.sprite && this.sprite.body && this.sprite.body.setVelocity) {
                     this.sprite.body.setVelocity(0, 0);

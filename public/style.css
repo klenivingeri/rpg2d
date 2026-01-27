@@ -8,12 +8,14 @@ body {
 
 /* Garantir que não haja barras de rolagem e que o canvas ocupe toda a viewport */
 html, body { height: 100%; overflow: hidden; }
-#game-container { position:relative; width:100vw; height:100vh; overflow:hidden; }
+/* Use --vh to correctly represent viewport height on mobile browsers */
+:root{ --vh: 1vh; }
+#game-container { position:relative; width:100vw; height:calc(var(--vh, 1vh) * 100); overflow:hidden; }
 #game-container canvas { width:100%; height:100%; display:block; }
 
 #app {
     width: 100%;
-    height: 100vh;
+    height: calc(var(--vh, 1vh) * 100);
     overflow: hidden;
     display: flex;
     justify-content: center;
