@@ -1,5 +1,6 @@
 import { fireProjectile } from './Projectile';
 import { Debug } from '../Debug';
+import DamageText from './DamageText';
 
     // aumenta a area de tiro do enemy
     //enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier * 1.50));
@@ -217,9 +218,13 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
     };
 
     // custom hit handler to apply damage and flash when hit
-    enemy.onHit = function (source)
+    enemy.onHit = function (source, damage = 1)
     {
-        this.health = (this.health || 1) - 1;
+        const prevHealth = this.health || 1;
+        this.health = prevHealth - damage;
+
+        // Exibe o texto de dano animado
+        new DamageText(this.scene, this.x, this.y - (this.radius || 20), damage);
 
         // flash visual feedback
         if (this.setFillStyle)

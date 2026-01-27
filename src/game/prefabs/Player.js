@@ -1,7 +1,9 @@
+
 import Phaser from 'phaser';
 import { fireProjectile } from './Projectile';
 import { Debug } from '../Debug';
 import { EventBus } from '../EventBus';
+import HealthBar from './HealthBar';
 
 
 export default class Player
@@ -12,10 +14,15 @@ export default class Player
         this.width = 32; // diameter
         this.height = 32; // keep square for circle sprite
 
+
         // vida do player
-        this.health = 3;
+        this.maxHealth = 3;
+        this.health = this.maxHealth;
 
         const radius = this.width / 2;
+        // barra de vida
+        this.healthBar = new HealthBar(scene, x, y - radius - 12, 40, 6, this.maxHealth);
+
         this.sprite = scene.add.circle(x, y, radius, 0x3366ff);
         scene.physics.add.existing(this.sprite);
         // convert Arcade body to circular shape
@@ -74,26 +81,25 @@ export default class Player
         EventBus.on('auto-fire-changed', this._onAutoFire);
 
         // handler para quando o player for atingido por um projétil
-        this.onHit = (source) =>
-        {
-            this.health = (this.health || 0) - 1;
+        this.onHit = (source) => {
+            this.health = Math.max(0, (this.health || 0) - 1);
+            this.healthBar.updateHealth(this.health);
 
             // feedback visual rápido
-            if (this.sprite && this.sprite.setFillStyle)
-            {
+            if (this.sprite && this.sprite.setFillStyle) {
                 this.sprite.setFillStyle(0xff6666);
                 this.scene.time.addEvent({ delay: 120, callback: () => { if (this.sprite && this.sprite.setFillStyle) this.sprite.setFillStyle(0x3366ff); } });
             }
 
-            if (this.health <= 0)
-            {
+            if (this.health <= 0) {
                 // destruir sprite e notificar cena (morte)
-                if (this.sprite && this.sprite.destroy)
-                {
+                if (this.sprite && this.sprite.destroy) {
                     this.sprite.destroy();
                 }
-                if (this.scene && typeof this.scene.changeScene === 'function')
-                {
+                if (this.healthBar && this.healthBar.destroy) {
+                    this.healthBar.destroy();
+                }
+                if (this.scene && typeof this.scene.changeScene === 'function') {
                     this.scene.changeScene();
                 }
             }
@@ -147,11 +153,18 @@ export default class Player
         this.targetPoint = null;
     }
 
-    update(time)
-    {
+    update(time) {
+        // suaviza a posição para evitar tremidas visuais
+        this.sprite.x = Math.round(this.sprite.x);
+        this.sprite.y = Math.round(this.sprite.y);
         // atualizar visual do range
         this.rangeCircle.setPosition(this.sprite.x, this.sprite.y);
         this.rangeCircle.setVisible(!!Debug.showAreas);
+        // atualizar barra de vida
+        if (this.healthBar) {
+            this.healthBar.follow(this.sprite.x, this.sprite.y - (this.width / 2) - 12);
+            this.healthBar.updateHealth(this.health);
+        }
 
         // Controle por joystick (mobile) ou teclas WASD (teclado tem prioridade sobre joystick)
         let movingByKeys = false;
