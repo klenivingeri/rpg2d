@@ -41,7 +41,8 @@ export class Preloader extends Scene
         //  When all the assets have loaded, it's often worth creating global objects here that the rest of the game can use.
         //  For example, you can define global animations here, so we can use them in other scenes.
 
-        // Após carregar, inicia o Game diretamente (MainMenu removido)
-        this.scene.start('Game');
+        // Após carregar, NÃO iniciar o Game automaticamente.
+        // O controle de início do jogo é feito pela UI React (botão INICIAR).
+        // Se necessário, poderíamos emitir um evento via EventBus aqui para sinalizar que o preloader terminou.
     }
 }
