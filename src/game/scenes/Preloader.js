@@ -1,4 +1,5 @@
 import { Scene } from 'phaser';
+import gameConfig from '../gameConfig';
 
 export class Preloader extends Scene
 {
@@ -34,6 +35,48 @@ export class Preloader extends Scene
 
         this.load.image('logo', 'logo.png');
         this.load.image('star', 'star.png');
+
+        // carregar frames do player a partir da configuração (todas as animações: run, idle, ...)
+        try {
+            const anims = (gameConfig && gameConfig.player && gameConfig.player.animation) ? gameConfig.player.animation : null;
+            if (anims && typeof anims === 'object') {
+                const base = (anims.path || 'player').replace(/^assets\/?/, '');
+                Object.keys(anims).forEach((animName) => {
+                    const frames = anims[animName];
+                    if (!Array.isArray(frames)) return;
+                    frames.forEach((frame, idx) => {
+                        const key = `player_${animName}_${idx}`;
+                        const filename = `${base}/${frame.img}`;
+                        this.load.image(key, filename);
+                    });
+                });
+            }
+        } catch (e) {
+            // silencioso: se algo der errado, continuamos sem bloquear o preloader
+        }
+
+        // carregar frames dos inimigos (se definidos em gameConfig.enemy.types)
+        try {
+            const types = (gameConfig && gameConfig.enemy && Array.isArray(gameConfig.enemy.types)) ? gameConfig.enemy.types : null;
+            if (types) {
+                types.forEach((type) => {
+                    try {
+                        const anims = type.animation || null;
+                        if (!anims || typeof anims !== 'object') return;
+                        const base = (anims.path || type.path || `enemy/${type.id}`).replace(/^assets\/?/, '');
+                        Object.keys(anims).forEach((animName) => {
+                            const frames = anims[animName];
+                            if (!Array.isArray(frames)) return;
+                            frames.forEach((frame, idx) => {
+                                const key = `enemy_${type.id}_${animName}_${idx}`;
+                                const filename = `${base}/${frame.img}`;
+                                this.load.image(key, filename);
+                            });
+                        });
+                    } catch (e) { /* ignore individual enemy load failures */ }
+                });
+            }
+        } catch (e) { /* ignore */ }
     }
 
     create ()

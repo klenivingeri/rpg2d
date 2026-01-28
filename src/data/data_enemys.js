@@ -2,8 +2,8 @@ export const ENEMYS = [
     {
         id: "tank",
         name: "tank",
-        path: "assets/enemy/mob1",
         animation: {
+            path: "assets/enemy/mob1",
             run: [
                 {
                     frame: 0,
@@ -24,6 +24,13 @@ export const ENEMYS = [
                     frame: 3,
                     duration: 100,
                     img: "sprite_run_two_3.png",
+                },
+            ],
+            idle: [
+                {
+                    frame: 0,
+                    duration: 100,
+                    img: "sprite_run_two_0.png",
                 },
             ],
         },
@@ -31,8 +38,8 @@ export const ENEMYS = [
     {
         id: "arqueiro",
         name: "arqueiro",
-        path: "assets/enemy/mob2",
         animation: {
+            path: "assets/enemy/mob2",
             run: [
                 {
                     frame: 0,
@@ -53,6 +60,13 @@ export const ENEMYS = [
                     frame: 3,
                     duration: 100,
                     img: "sprite_run_two_3.png",
+                },
+            ],
+            idle: [
+                {
+                    frame: 0,
+                    duration: 100,
+                    img: "sprite_run_two_0.png",
                 },
             ],
         },
@@ -60,8 +74,8 @@ export const ENEMYS = [
     {
         id: "mago",
         name: "mago",
-        path: "assets/enemy/mob3",
         animation: {
+            path: "assets/enemy/mob3",
             run: [
                 {
                     frame: 0,
@@ -82,6 +96,13 @@ export const ENEMYS = [
                     frame: 3,
                     duration: 100,
                     img: "sprite_run_two_3.png",
+                },
+            ],
+            idle: [
+                {
+                    frame: 0,
+                    duration: 100,
+                    img: "sprite_run_two_0.png",
                 },
             ],
         },
@@ -89,8 +110,8 @@ export const ENEMYS = [
     {
         id: "guerreiro",
         name: "guerriro",
-        path: "assets/enemy/mob4",
         animation: {
+            path: "assets/enemy/mob4",
             run: [
                 {
                     frame: 0,
@@ -111,6 +132,13 @@ export const ENEMYS = [
                     frame: 3,
                     duration: 100,
                     img: "sprite_run_two_3.png",
+                },
+            ],
+            idle: [
+                {
+                    frame: 0,
+                    duration: 100,
+                    img: "sprite_run_two_0.png",
                 },
             ],
         },
@@ -118,8 +146,8 @@ export const ENEMYS = [
     {
         id: "assasino",
         name: "assasino",
-        path: "assets/enemy/mob5",
         animation: {
+            path: "assets/enemy/mob5",
             run: [
                 {
                     frame: 0,
@@ -143,6 +171,13 @@ export const ENEMYS = [
                 },
             ],
         },
+        idle: [
+            {
+                frame: 0,
+                duration: 100,
+                img: "sprite_run_two_0.png",
+            },
+        ],
     },
 ];
 

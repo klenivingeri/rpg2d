@@ -6,7 +6,6 @@ import { EventBus } from '../EventBus';
 import HealthBar from './HealthBar';
 import gameConfig from '../gameConfig';
 
-
 export default class Player
 {
     constructor(scene, x, y)
@@ -19,18 +18,87 @@ export default class Player
         this.maxHealth = gameConfig.player.maxHealth;
         this.health = this.maxHealth;
 
-        const radius = this.width / 2;
-        // barra de vida
-        this.healthBar = new HealthBar(scene, x, y - radius - 12, 40, 6, this.maxHealth);
+        // fator de escala (pode ser configurado em gameConfig.player.scale)
+        const scale = (gameConfig.player && gameConfig.player.scale) ? gameConfig.player.scale : 1.5;
+        const scaledRadius = (this.width / 2) * scale;
+        // barra de vida (posicionada acima do sprite considerando a escala)
+        this.healthBar = new HealthBar(scene, x, y - scaledRadius - 12, 40, 6, this.maxHealth);
 
-        this.sprite = scene.add.circle(x, y, radius, 0x3366ff);
+        // criar sprite do player usando frames carregados pelo Preloader
+        const firstFrameKey = 'player_run_0';
+        this.sprite = scene.add.sprite(x, y, firstFrameKey);
         scene.physics.add.existing(this.sprite);
-        // convert Arcade body to circular shape
+        // ajustar tamanho do sprite para o tamanho configurado (mantém pixel art preferência)
+        if (this.sprite.setDisplaySize) {
+            this.sprite.setDisplaySize(this.width * scale, this.height * scale);
+        } else if (this.sprite.setScale) {
+            this.sprite.setScale(scale);
+        }
+        // converter corpo para circular quando possível (usar raio escalado)
         if (this.sprite.body && this.sprite.body.setCircle)
         {
-            this.sprite.body.setCircle(radius);
+            // setCircle(radius, offsetX, offsetY) para centralizar corretamente o corpo em sprites
+            try {
+                const dw = this.sprite.displayWidth || (this.width * scale);
+                const dh = this.sprite.displayHeight || (this.height * scale);
+            
+                const collisionRadius = Math.max(4, Math.floor(scaledRadius * 0.24));
+                const offsetX = Math.max(0, Math.round((dw / 2) - collisionRadius));
+                const offsetY = Math.max(0, Math.round((dh / 2) - collisionRadius));
+                
+                const visualShiftLeft = -16; // pixels
+                const visualShiftTop = -8; // pixels (negative moves up)
+                const offsetXAdj = offsetX + visualShiftLeft;
+                const offsetYAdj = offsetY + visualShiftTop;
+                // alguns builds do Phaser aceitam 3 argumentos, outros usam setOffset separadamente
+                if (this.sprite.body.setCircle.length >= 3) {
+                    this.sprite.body.setCircle(collisionRadius, offsetXAdj, offsetYAdj);
+                } else {
+                    this.sprite.body.setCircle(collisionRadius);
+                    if (typeof this.sprite.body.setOffset === 'function') this.sprite.body.setOffset(offsetXAdj, offsetYAdj);
+                }
+                // armazenar radius e offsets para uso posterior (debug/fallback)
+                this._collisionRadius = collisionRadius;
+                this._collisionOffsetX = offsetXAdj;
+                this._collisionOffsetY = offsetYAdj;
+                this._collisionVisualShiftX = visualShiftLeft;
+                this._collisionVisualShiftY = visualShiftTop;
+            } catch (e) {
+                try { this.sprite.body.setCircle(Math.max(4, Math.floor(scaledRadius * 0.3)), Math.round(Math.max(0, (this.sprite.displayWidth || (this.width * scale)) / 2 - Math.max(4, Math.floor(scaledRadius * 0.3))) - 50), Math.round(Math.max(0, (this.sprite.displayHeight || (this.height * scale)) / 2 - Math.max(4, Math.floor(scaledRadius * 0.3))) - 10)); } catch (e2) { /* ignore */ }
+            }
         }
         this.sprite.body.setCollideWorldBounds(true);
+
+        // criar gráfico de colisão (desenharemos usando as métricas reais do corpo físico)
+        try {
+            this._collisionGraphics = scene.add.graphics();
+            this._collisionGraphics.lineStyle(2, 0x00ff00, 0.9);
+            this._collisionGraphics.setDepth(100000);
+            this._collisionGraphics.setVisible(!!Debug.showAreas);
+        } catch (e) { /* ignore */ }
+
+        // criar animações do player (run, idle, ...) a partir de `gameConfig`
+        try {
+            const animCfg = gameConfig && gameConfig.player && gameConfig.player.animation;
+            if (animCfg && typeof animCfg === 'object') {
+                Object.keys(animCfg).forEach((animName) => {
+                    const framesArr = animCfg[animName];
+                    if (!Array.isArray(framesArr)) return;
+                    const animKey = `player_${animName}_anim`;
+                    if (!scene.anims.exists(animKey)) {
+                        const frames = framesArr.map((f, idx) => ({ key: `player_${animName}_${idx}` }));
+                        const duration = (framesArr[0] && framesArr[0].duration) || 100;
+                        const frameRate = Math.max(1, Math.round(1000 / duration));
+                        scene.anims.create({ key: animKey, frames, frameRate, repeat: -1 });
+                    }
+                });
+            }
+            // começar com idle se existir, senão run
+            const startKey = scene.anims.exists('player_idle_anim') ? 'player_idle_anim' : (scene.anims.exists('player_run_anim') ? 'player_run_anim' : null);
+            if (startKey && this.sprite.play) this.sprite.play(startKey);
+        } catch (e) {
+            // silent
+        }
 
         this.rangeRadius = (gameConfig.player.rangeMultiplier || 4) * this.width; // regra: multiplier * largura do player
         this.rangeCircle = scene.add.circle(x, y, this.rangeRadius, 0x0000ff, 0.12);
@@ -55,6 +123,8 @@ export default class Player
         this.controlMode = 'mouse';
             this.autoFireEnabled = false;
             this.autoTargetEnemy = null;
+        // track last horizontal flip state
+        this._facingLeft = false;
 
             // fallback: tentar ler preferência salva diretamente do localStorage
             try {
@@ -85,10 +155,10 @@ export default class Player
             this.health = Math.max(0, (this.health || 0) - (damage || 1));
             this.healthBar.updateHealth(this.health);
 
-            // feedback visual rápido
-            if (this.sprite && this.sprite.setFillStyle) {
-                this.sprite.setFillStyle(0xff6666);
-                this.scene.time.addEvent({ delay: 120, callback: () => { if (this.sprite && this.sprite.setFillStyle) this.sprite.setFillStyle(0x3366ff); } });
+            // feedback visual rápido: usar tint para o sprite
+            if (this.sprite && this.sprite.setTint) {
+                this.sprite.setTint(0xff6666);
+                this.scene.time.addEvent({ delay: 120, callback: () => { if (this.sprite && this.sprite.clearTint) this.sprite.clearTint(); } });
             }
 
             if (this.health <= 0) {
@@ -158,6 +228,26 @@ export default class Player
         // atualizar visual do range
         this.rangeCircle.setPosition(this.sprite.x, this.sprite.y);
         this.rangeCircle.setVisible(!!Debug.showAreas);
+        // atualizar borda de colisão do player usando o corpo físico para refletir colisões reais
+        if (this._collisionGraphics) {
+            try {
+                if (Debug.showAreas && this.sprite && this.sprite.body) {
+                    const b = this.sprite.body;
+                    // preferir propriedades de centro quando disponíveis
+                    const centerX = (b.center && typeof b.center.x === 'number') ? b.center.x : ((typeof b.x !== 'undefined') ? (b.x + (b.width || 0) * 0.5) : this.sprite.x);
+                    const centerY = (b.center && typeof b.center.y === 'number') ? b.center.y : ((typeof b.y !== 'undefined') ? (b.y + (b.height || 0) * 0.5) : this.sprite.y);
+                    // usar o width do corpo como diâmetro (setCircle faz width = diameter)
+                    const radius = Math.max(1, Math.round((b.width || 0) * 0.5));
+                    this._collisionGraphics.clear();
+                    this._collisionGraphics.lineStyle(2, 0x00ff00, 0.9);
+                    this._collisionGraphics.strokeCircle(centerX, centerY, radius);
+                    this._collisionGraphics.setVisible(true);
+                } else {
+                    try { this._collisionGraphics.clear(); } catch (e) { /* ignore */ }
+                    this._collisionGraphics.setVisible(false);
+                }
+            } catch (e) { /* ignore */ }
+        }
         // atualizar barra de vida
         if (this.healthBar) {
             this.healthBar.follow(this.sprite.x, this.sprite.y - (this.width / 2) - 12);
@@ -181,6 +271,7 @@ export default class Player
 
         if (!movingByKeys && this.keys) {
             if (this.keys.w && this.keys.w.isDown) { vy -= 1; movingByKeys = true; }
+
             if (this.keys.s && this.keys.s.isDown) { vy += 1; movingByKeys = true; }
             if (this.keys.a && this.keys.a.isDown) { vx -= 1; movingByKeys = true; }
             if (this.keys.d && this.keys.d.isDown) { vx += 1; movingByKeys = true; }
@@ -265,6 +356,21 @@ export default class Player
         // se modo teclado e o jogador estiver parado, auto-target inimigos dentro do alcance
         const bodySpeed = (this.sprite && this.sprite.body) ? Math.hypot(this.sprite.body.velocity.x || 0, this.sprite.body.velocity.y || 0) : 0;
         const isStopped = bodySpeed < 1 && !movingByKeys && !this.targetPoint;
+
+        // alternar animação: 'idle' quando parado, 'run' caso contrário
+        try {
+            const desiredAnim = isStopped ? 'idle' : 'run';
+            const animKey = `player_${desiredAnim}_anim`;
+            const cur = (this.sprite && this.sprite.anims && this.sprite.anims.currentAnim) ? this.sprite.anims.currentAnim.key : null;
+            if (cur !== animKey) {
+                if (this.scene && this.scene.anims && this.scene.anims.exists(animKey)) {
+                    this.sprite.play(animKey);
+                } else {
+                    const fallback = (this.scene && this.scene.anims && this.scene.anims.exists('player_run_anim')) ? 'player_run_anim' : null;
+                    if (fallback) this.sprite.play(fallback);
+                }
+            }
+        } catch (e) { /* ignore */ }
         // comportamento antigo: em modo teclado fazia auto-target. Agora:
         // - se player estiver parado e autoFireEnabled, escolhe o inimigo MAIS PRÓXIMO dentro do range (não altera seleção visual)
         // - caso contrário, conserva lógica anterior para modo teclado (seleção visual)
@@ -333,6 +439,69 @@ export default class Player
                 fireProjectile(this.scene, this.sprite.x, this.sprite.y, attackTarget, undefined, 'player');
             }
         }
+
+        // virar sprite horizontalmente: mantém a direção do último movimento
+        // e só altera para mirar quando estiver atirando (attackTarget tem prioridade)
+        try {
+            const thresh = 0.1;
+            let newFacingLeft = this._facingLeft;
+
+            if (attackTarget && attackTarget.active) {
+                const dx = (attackTarget.x || 0) - this.sprite.x;
+                if (dx < -thresh) newFacingLeft = true;
+                else if (dx > thresh) newFacingLeft = false;
+                // se dx estiver muito pequeno, mantém o facing atual
+            } else {
+                // quando não mirando, basear no movimento: velocity.x tem prioridade
+                const velX = (this.sprite && this.sprite.body) ? (this.sprite.body.velocity.x || 0) : 0;
+                if (Math.abs(velX) > thresh) {
+                    newFacingLeft = velX < 0;
+                }
+                // se não estiver se movendo, não alteramos newFacingLeft
+            }
+
+            if (newFacingLeft !== this._facingLeft) {
+                this._facingLeft = newFacingLeft;
+                if (this.sprite && typeof this.sprite.setFlipX === 'function') {
+                    this.sprite.setFlipX(newFacingLeft);
+                } else if (this.sprite) {
+                    this.sprite.flipX = newFacingLeft;
+                }
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    destroy()
+    {
+        try { EventBus.removeListener('set-control-mode', this._onControlMode); } catch (e) { /* ignore */ }
+        try { EventBus.removeListener('auto-fire-changed', this._onAutoFire); } catch (e) { /* ignore */ }
+
+        try { if (this.rangeCircle && this.rangeCircle.destroy) this.rangeCircle.destroy(); } catch (e) { /* ignore */ }
+        try { if (this.healthBar && this.healthBar.destroy) this.healthBar.destroy(); } catch (e) { /* ignore */ }
+        try { if (this.sprite && this.sprite.destroy) this.sprite.destroy(); } catch (e) { /* ignore */ }
+        try { if (this._collisionGraphics && this._collisionGraphics.destroy) this._collisionGraphics.destroy(); } catch (e) { /* ignore */ }
+
+        try {
+            const kb = (this.scene && this.scene.input && this.scene.input.keyboard) ? this.scene.input.keyboard : null;
+            if (kb && this.keys) {
+                if (this.keys.w) kb.removeKey(this.keys.w);
+                if (this.keys.a) kb.removeKey(this.keys.a);
+                if (this.keys.s) kb.removeKey(this.keys.s);
+                if (this.keys.d) kb.removeKey(this.keys.d);
+            }
+        } catch (e) { /* ignore */ }
+
+        // clear references to help GC
+        this.scene = null;
+        this.sprite = null;
+        this.healthBar = null;
+        this.rangeCircle = null;
+        this.keys = null;
+        this.selectedEnemy = null;
+        this.targetEnemy = null;
+        this.autoTargetEnemy = null;
+        this._onControlMode = null;
+        this._onAutoFire = null;
     }
 
 }

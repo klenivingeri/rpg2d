@@ -4,7 +4,6 @@ import { ENEMYS } from "../data/data_enemys";
 export const player = {
     id: "player",
     name: "player",
-    path: "assets/player",
     width: 32,
     maxHealth: 3,
     moveSpeed: 220,
@@ -19,10 +18,11 @@ export const player = {
         radius: 6,
         speed: 280,
         ttl: 3000,
-        damage: 2,
+        damage: 1,
         
     },
     animation: {
+        path: "assets/player",
         run: [
             {
                 frame: 0,
@@ -43,6 +43,13 @@ export const player = {
                 frame: 3,
                 duration: 100,
                 img: "sprite_run_two_3.png",
+            },
+        ],
+        idle: [
+            {
+                frame: 0,
+                duration: 100,
+                img: "sprite_run_two_0.png",
             },
         ],
     },

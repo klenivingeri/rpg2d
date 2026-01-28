@@ -18,6 +18,7 @@ export class Game extends Scene
 
     create ()
     {
+        console.log('[Game] create');
         // estado local para saber se o joystick virtual está ativo (controlado pela UI React)
         this.joystickEnabled = false;
         // tentar inicializar a partir do localStorage para cobrir casos onde o React ainda
@@ -28,15 +29,20 @@ export class Game extends Scene
         } catch (e) { /* ignore */ }
         // ouvir mudanças vindas do EventBus
         this._onJoystickChanged = (v) => {
+            console.log('[Game] joystick-changed', v);
             this.joystickEnabled = !!v;
             // create joystick lazily if necessary
             if (!this.joystick) {
+                console.log('[Game] creating joystick (lazy) enabled=', this.joystickEnabled);
                 this.joystick = new Joystick(this, { enabled: this.joystickEnabled });
             } else {
+                console.log('[Game] updating joystick enable state ->', this.joystickEnabled);
                 if (this.joystickEnabled) this.joystick.enable(); else this.joystick.disable();
             }
         };
         EventBus.on('joystick-changed', this._onJoystickChanged);
+        this.events.on('pause', () => { console.log('[Game] event: pause'); });
+        this.events.on('resume', () => { console.log('[Game] event: resume'); });
         this.cameras.main.setBackgroundColor(0x00aa55);
         
         // gráfico para debug (grid + deadzone) fixo na tela
@@ -50,7 +56,8 @@ export class Game extends Scene
         }
         else
         {
-            window.addEventListener('contextmenu', (e) => { e.preventDefault(); });
+            this._onContextMenu = (e) => { e.preventDefault(); };
+            window.addEventListener('contextmenu', this._onContextMenu);
         }
 
         // Fundo / mapa: força o tamanho lógico para 1600x1600 e origem em 0,0
@@ -74,81 +81,39 @@ export class Game extends Scene
         }
 
         // pointer input: click enemy to target, otherwise move to ground point
-        this.input.on('pointerdown', pointer =>
-        {
-            // se joystick virtual estiver ativo, ignoramos cliques que movimentem o player
-            if (this.joystickEnabled) {
-                return;
-            }
+        // named pointer handler so we can remove it on shutdown and avoid leaks
+        this._onPointerDown = (pointer) => {
+            if (this.joystickEnabled) return;
             let clickedEnemy = null;
-            for (const enemy of this.enemies.getChildren())
-            {
+            for (const enemy of this.enemies.getChildren()) {
                 const d = Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, enemy.x, enemy.y);
                 const r = (enemy.radius) ? enemy.radius : (enemy.displayWidth / 2 || 20);
-                if (d <= r)
-                {
-                    clickedEnemy = enemy;
-                    break;
-                }
+                if (d <= r) { clickedEnemy = enemy; break; }
             }
 
-            if (clickedEnemy)
-            {
-                // if player is already locked in attack position on this enemy, ignore
-                if (this.player.inAttackPosition && this.player.selectedEnemy === clickedEnemy)
-                {
-                    return;
-                }
-
-                // deselect other enemies
-                for (const e of this.enemies.getChildren())
-                {
-                    if (e !== clickedEnemy && e.setSelected)
-                    {
-                        e.setSelected(false);
-                    }
-                }
-
-                // mark clicked enemy as selected visually
-                if (clickedEnemy.setSelected)
-                {
-                    clickedEnemy.setSelected(true);
-                }
-
-                // If enemy is already within player's perception range, start firing from current position
+            if (clickedEnemy) {
+                if (this.player.inAttackPosition && this.player.selectedEnemy === clickedEnemy) return;
+                for (const e of this.enemies.getChildren()) { if (e !== clickedEnemy && e.setSelected) e.setSelected(false); }
+                if (clickedEnemy.setSelected) clickedEnemy.setSelected(true);
                 const distToEnemy = Phaser.Math.Distance.Between(this.player.sprite.x, this.player.sprite.y, clickedEnemy.x, clickedEnemy.y);
-                if (distToEnemy <= this.player.rangeRadius)
-                {
-                    // stop any movement and lock on target so autofire begins immediately
+                if (distToEnemy <= this.player.rangeRadius) {
                     this.player.stop();
                     this.player.selectedEnemy = clickedEnemy;
                     this.player.targetEnemy = null;
                     this.player.inAttackPosition = true;
-                }
-                else
-                {
-                    // move toward enemy and stop at shooting distance
+                } else {
                     this.player.moveToEnemy(clickedEnemy);
                 }
-            }
-            else
-            {
-                // cancel any attack lock and move to clicked ground point
+            } else {
                 this.player.inAttackPosition = false;
-                // clear selection visuals on all enemies
-                for (const e of this.enemies.getChildren())
-                {
-                    if (e.setSelected)
-                    {
-                        e.setSelected(false);
-                    }
-                }
-
+                for (const e of this.enemies.getChildren()) { if (e.setSelected) e.setSelected(false); }
                 this.player.selectedEnemy = null;
                 this.player.targetEnemy = null;
                 this.player.moveTo({ x: pointer.worldX, y: pointer.worldY });
             }
-        });
+        };
+
+        this.input.on('pointerdown', this._onPointerDown);
 
         // --- Câmera ---
         const cam = this.cameras.main;
@@ -212,6 +177,7 @@ export class Game extends Scene
 
         // Remove listeners when scene shuts down to avoid duplicate handlers
         this.events.on('shutdown', () => {
+            console.log('[Game] shutdown');
             try {
                 window.removeEventListener('resize', this._onResize);
             } catch (e) { /* ignore */ }
@@ -220,10 +186,16 @@ export class Game extends Scene
             } catch (e) { /* ignore */ }
             try { EventBus.removeListener('joystick-changed', this._onJoystickChanged); } catch (e) { /* ignore */ }
             try { if (this.deadzoneBorder) { this.deadzoneBorder.destroy(); } } catch (e) { /* ignore */ }
+            try { if (this._onContextMenu) { window.removeEventListener('contextmenu', this._onContextMenu); } } catch (e) { /* ignore */ }
+            try { if (this._onPointerDown) { this.input.off('pointerdown', this._onPointerDown); } } catch (e) { /* ignore */ }
+            try { if (this.player && typeof this.player.destroy === 'function') { this.player.destroy(); } } catch (e) { /* ignore */ }
+            try { if (this.joystick && typeof this.joystick.destroy === 'function') { this.joystick.destroy(); } } catch (e) { /* ignore */ }
+            try { this.joystick = null; } catch (e) { /* ignore */ }
         });
 
         // create joystick instance (lazy) so Player can reference it; visibility controlled by `joystickEnabled`
         if (!this.joystick) {
+            console.log('[Game] creating initial joystick enabled=', this.joystickEnabled);
             this.joystick = new Joystick(this, { enabled: this.joystickEnabled });
         }
 

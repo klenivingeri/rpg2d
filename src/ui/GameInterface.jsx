@@ -37,7 +37,7 @@ export function GameUIProvider({ children }) {
   const setView = (v) => setGameState(s => ({ ...s, view: v }));
   const addGold = (amount) => setGameState(s => ({ ...s, gold: s.gold + amount }));
   const addKill = () => setGameState(s => ({ ...s, monstersKilled: s.monstersKilled + 1 }));
-  const reset = () => setGameState({ view: 'init', gold: 0, monstersKilled: 0, totalMonsters: 10, inventory: [], equippedItems: { weapon: null, armor: null, accessory: null }, skills: [], autoFire: false });
+  const reset = () => setGameState(s => ({ ...s, view: 'init', gold: 0, monstersKilled: 0, totalMonsters: 10, inventory: [], equippedItems: { weapon: null, armor: null, accessory: null }, skills: [] }));
 
   // Ouve evento 'game-over' vindo do Phaser e muda para a view de resultado
   useEffect(() => {

@@ -4,6 +4,7 @@ import { Debug } from '../Debug';
 export default class Joystick {
     constructor(scene, opts = {}) {
         this.scene = scene;
+        console.log('[Joystick] constructor', { sceneKey: scene && scene.scene ? scene.scene.key : (scene && scene.key), opts });
         this.enabled = !!opts.enabled;
 
         this.baseRadius = opts.baseRadius || 70;
@@ -60,6 +61,7 @@ export default class Joystick {
     }
 
     destroy() {
+        console.log('[Joystick] destroy');
         try { this.scene.input.off('pointerdown', this._onDown); } catch (e) {}
         try { this.scene.input.off('pointermove', this._onMove); } catch (e) {}
         try { this.scene.input.off('pointerup', this._onUp); } catch (e) {}
@@ -70,13 +72,14 @@ export default class Joystick {
     }
 
     setVisible(v) {
+        console.log('[Joystick] setVisible', !!v);
         this.base.setVisible(!!v);
         this.thumb.setVisible(!!v);
         this._updateBaseBorder();
     }
 
     enable() { this.enabled = true; this.setVisible(true); }
-    disable() { this.enabled = false; this.setVisible(false); this._reset(); }
+    disable() { console.log('[Joystick] disable'); this.enabled = false; this.setVisible(false); this._reset(); }
 
     _onResize(gameSize) {
         const w = gameSize.width || this.scene.scale.width;

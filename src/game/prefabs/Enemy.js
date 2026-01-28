@@ -8,9 +8,97 @@ import gameConfig from '../gameConfig';
 
 export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameConfig.enemy && gameConfig.enemy.rangeMultiplier) || 0.6)
 {
-    const enemy = scene.add.circle(x, y, radius, 0xff3333);
-    scene.physics.add.existing(enemy);
-    enemy.body.setCircle(radius);
+    // collision scale: permite reduzir o corpo físico em relação ao visual
+    const COLLISION_SCALE = (gameConfig.enemy && typeof gameConfig.enemy.collisionScale === 'number') ? gameConfig.enemy.collisionScale : 0.9;
+    // pick enemy type (random from configured types) to choose sprite/animations
+    const types = (gameConfig && gameConfig.enemy && Array.isArray(gameConfig.enemy.types)) ? gameConfig.enemy.types : [];
+    const type = types.length ? types[Math.floor(Math.random() * types.length)] : null;
+
+    // determine initial frame key for sprite (fallback to simple colored circle if none)
+    let enemy = null;
+    if (type && type.animation && typeof type.animation === 'object') {
+        // prefer idle then run
+        const anims = type.animation;
+        const animName = anims.idle ? 'idle' : (anims.run ? 'run' : Object.keys(anims)[0]);
+        const firstFrameIdx = (Array.isArray(anims[animName]) && anims[animName][0]) ? 0 : 0;
+        const firstKey = `enemy_${type.id}_${animName}_${firstFrameIdx}`;
+        enemy = scene.add.sprite(x, y, firstKey);
+        // size sprite to provided radius BEFORE adding physics so offsets use correct display size
+        try { if (enemy.setDisplaySize) enemy.setDisplaySize(radius * 2, radius * 2); else if (enemy.setScale) enemy.setScale((radius * 2) / (enemy.width || (radius*2))); } catch (e) { /* ignore */ }
+        scene.physics.add.existing(enemy);
+        // set a circular body for sprite where possible (use collision scale)
+        try {
+            if (enemy.body && typeof enemy.body.setCircle === 'function') {
+                const collisionRadius = Math.max(4, Math.round(radius * COLLISION_SCALE));
+                // try to center the smaller collision circle inside the visual sprite
+                const dw = enemy.displayWidth || (radius * 2);
+                const dh = enemy.displayHeight || (radius * 2);
+                const offsetX = Math.max(0, Math.round((dw / 2) - collisionRadius));
+                const offsetY = Math.max(0, Math.round((dh / 2) - collisionRadius));
+                // aplicar deslocamento visual similar ao Player para ajustar top/left
+                const visualShiftLeft = (gameConfig.enemy && typeof gameConfig.enemy.visualShiftLeft === 'number') ? gameConfig.enemy.visualShiftLeft : -12;
+                const visualShiftTop = (gameConfig.enemy && typeof gameConfig.enemy.visualShiftTop === 'number') ? gameConfig.enemy.visualShiftTop : -5;
+                const offsetXAdj = offsetX + visualShiftLeft;
+                const offsetYAdj = offsetY + visualShiftTop;
+                if (enemy.body.setCircle.length >= 3) {
+                    enemy.body.setCircle(collisionRadius, offsetXAdj, offsetYAdj);
+                } else {
+                    enemy.body.setCircle(collisionRadius);
+                    if (typeof enemy.body.setOffset === 'function') enemy.body.setOffset(offsetXAdj, offsetYAdj);
+                }
+                enemy.collisionRadius = collisionRadius;
+                enemy._collisionOffsetX = offsetXAdj;
+                enemy._collisionOffsetY = offsetYAdj;
+            }
+        } catch (e) { /* ignore */ }
+        // create animations for this enemy type if not already present
+        try {
+            Object.keys(anims).forEach((aName) => {
+                const framesArr = anims[aName];
+                if (!Array.isArray(framesArr)) return;
+                const animKey = `enemy_${type.id}_${aName}_anim`;
+                if (!scene.anims.exists(animKey)) {
+                    const frames = framesArr.map((f, idx) => ({ key: `enemy_${type.id}_${aName}_${idx}` }));
+                    const duration = (framesArr[0] && framesArr[0].duration) || 100;
+                    const frameRate = Math.max(1, Math.round(1000 / duration));
+                    scene.anims.create({ key: animKey, frames, frameRate, repeat: -1 });
+                }
+            });
+            // play idle or run animation by default
+            const startAnim = scene.anims.exists(`enemy_${type.id}_idle_anim`) ? `enemy_${type.id}_idle_anim` : (scene.anims.exists(`enemy_${type.id}_run_anim`) ? `enemy_${type.id}_run_anim` : null);
+            if (startAnim && enemy.play) enemy.play(startAnim);
+        } catch (e) { /* ignore */ }
+        // store radius for hit detection and visuals
+        enemy.radius = radius;
+    } else {
+        // fallback to circle if no sprite available
+        enemy = scene.add.circle(x, y, radius, 0xff3333);
+        scene.physics.add.existing(enemy);
+        const collisionRadius = Math.max(4, Math.round(radius * COLLISION_SCALE));
+        if (enemy.body && enemy.body.setCircle) {
+            // center smaller collision circle and apply visual shift like sprites
+            const dw = enemy.displayWidth || (radius * 2);
+            const dh = enemy.displayHeight || (radius * 2);
+            const offsetX = Math.max(0, Math.round((dw / 2) - collisionRadius));
+            const offsetY = Math.max(0, Math.round((dh / 2) - collisionRadius));
+            const visualShiftLeft = (gameConfig.enemy && typeof gameConfig.enemy.visualShiftLeft === 'number') ? gameConfig.enemy.visualShiftLeft : -16;
+            const visualShiftTop = (gameConfig.enemy && typeof gameConfig.enemy.visualShiftTop === 'number') ? gameConfig.enemy.visualShiftTop : -8;
+            const offsetXAdj = offsetX + visualShiftLeft;
+            const offsetYAdj = offsetY + visualShiftTop;
+            try {
+                if (enemy.body.setCircle.length >= 3) enemy.body.setCircle(collisionRadius, offsetXAdj, offsetYAdj);
+                else {
+                    enemy.body.setCircle(collisionRadius);
+                    if (typeof enemy.body.setOffset === 'function') enemy.body.setOffset(offsetXAdj, offsetYAdj);
+                }
+            } catch (e) { try { enemy.body.setCircle(collisionRadius); } catch (e2) { /* ignore */ } }
+            enemy.collisionRadius = collisionRadius;
+            enemy._collisionOffsetX = offsetXAdj;
+            enemy._collisionOffsetY = offsetYAdj;
+        }
+        enemy.radius = radius;
+        enemy.collisionRadius = collisionRadius;
+    }
     // allow enemy movement (will chase the player when in range)
     enemy.body.setImmovable(false);
     if (enemy.body.setAllowGravity)
@@ -36,6 +124,13 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
     sel.setDepth(10);
 
     enemy._selectionGraphics = sel;
+    // collision graphics (outline of physics body)
+    try {
+        enemy._collisionGraphics = scene.add.graphics();
+        enemy._collisionGraphics.lineStyle(2, 0x00ff00, 0.9);
+        enemy._collisionGraphics.setDepth(100000);
+        enemy._collisionGraphics.setVisible(!!Debug.showAreas);
+    } catch (e) { /* ignore */ }
     enemy.setSelected = function (v)
     {
         this._selectionGraphics.setVisible(!!v);
@@ -99,6 +194,29 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
             this._followGraphics.lineStyle(2, 0xff8800, 0.7);
             this._followGraphics.strokeCircle(this.x, this.y, this.followRadius);
             this._followGraphics.setVisible(!!Debug.showAreas);
+        }
+
+        // desenhar contorno do corpo físico (similar ao Player)
+        if (this._collisionGraphics)
+        {
+            try {
+                if (Debug.showAreas && this.body)
+                {
+                    const b = this.body;
+                    const centerX = (b.center && typeof b.center.x === 'number') ? b.center.x : ((typeof b.x !== 'undefined') ? (b.x + (b.width || 0) * 0.5) : this.x);
+                    const centerY = (b.center && typeof b.center.y === 'number') ? b.center.y : ((typeof b.y !== 'undefined') ? (b.y + (b.height || 0) * 0.5) : this.y);
+                    const radiusBody = (this.collisionRadius && typeof this.collisionRadius === 'number') ? this.collisionRadius : Math.max(1, Math.round((b.width || 0) * 0.5) || (this.radius || 1));
+                    this._collisionGraphics.clear();
+                    this._collisionGraphics.lineStyle(2, 0x00ff00, 0.9);
+                    this._collisionGraphics.strokeCircle(centerX, centerY, radiusBody);
+                    this._collisionGraphics.setVisible(true);
+                }
+                else
+                {
+                    try { this._collisionGraphics.clear(); } catch (e) { /* ignore */ }
+                    this._collisionGraphics.setVisible(false);
+                }
+            } catch (e) { /* ignore */ }
         }
 
         // ajustar depth com base na proximidade ao player e na quantidade de inimigos
@@ -180,6 +298,21 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
             }
             this.isChasing = false;
         }
+    };
+
+    // ensure sprite faces the movement direction
+    const _origUpdateForFlip = enemy.update;
+    enemy.update = function(time) {
+        if (typeof _origUpdateForFlip === 'function') _origUpdateForFlip.call(this, time);
+        try {
+            const velX = (this.body && this.body.velocity) ? (this.body.velocity.x || 0) : 0;
+            const thresh = 0.1;
+            if (Math.abs(velX) > thresh) {
+                const wantLeft = velX < 0;
+                if (typeof this.setFlipX === 'function') this.setFlipX(wantLeft);
+                else this.flipX = wantLeft;
+            }
+        } catch (e) { /* ignore */ }
     };
 
     // small separation to avoid enemies stacking exactly on top of each other
@@ -293,6 +426,10 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
         if (enemy._followGraphics)
         {
             enemy._followGraphics.destroy();
+        }
+        if (enemy._collisionGraphics)
+        {
+            enemy._collisionGraphics.destroy();
         }
 
         if (scene && scene.player && scene.player.selectedEnemy === enemy)
