@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 import { Scene } from 'phaser';
 import Player from '../prefabs/Player';
+import gameConfig from '../gameConfig';
 import Joystick from '../inputs/Joystick';
 import { createEnemy } from '../prefabs/Enemy';
 import { Debug } from '../Debug';
@@ -237,7 +238,7 @@ export class Game extends Scene
             const inp = this.joystick.getInput();
             if (this.player && this.player.sprite && this.player.sprite.body && (Math.abs(inp.x) > 0 || Math.abs(inp.y) > 0))
             {
-                const speed = this.player.moveSpeed || 220;
+                const speed = this.player.moveSpeed || (gameConfig.player && gameConfig.player.moveSpeed) || 220;
                 const vx = inp.x * speed;
                 const vy = inp.y * speed;
                 this.player.sprite.body.setVelocity(vx, vy);

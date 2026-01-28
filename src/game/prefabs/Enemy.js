@@ -1,11 +1,12 @@
 import { fireProjectile } from './Projectile';
 import { Debug } from '../Debug';
 import DamageText from './DamageText';
+import gameConfig from '../gameConfig';
 
     // aumenta a area de tiro do enemy
     //enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier * 1.50));
 
-export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
+export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameConfig.enemy && gameConfig.enemy.rangeMultiplier) || 0.6)
 {
     const enemy = scene.add.circle(x, y, radius, 0xff3333);
     scene.physics.add.existing(enemy);
@@ -25,7 +26,7 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
     {
         enemy.body.setCollideWorldBounds(true);
     }
-    enemy.health = 3;
+    enemy.health = (gameConfig.enemy && gameConfig.enemy.baseHealth) || 3;
 
     // create a selection border (Graphics) and hide by default
     const sel = scene.add.graphics({ x: 0, y: 0 });
@@ -45,7 +46,8 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
     // enemy should have smaller attack range than the player; if player exists, base on that
     const playerRange = (scene.player && scene.player.rangeRadius) ? scene.player.rangeRadius : 60;
     // aumentar ligeiramente a área de ataque para tornar inimigos mais agressivos
-    enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier * 1.50));
+    const extraMul = (gameConfig.enemy && gameConfig.enemy.attackRadiusExtraMultiplier) || 1.5;
+    enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier * extraMul));
     enemy.attackCircle = scene.add.circle(x, y, enemy.attackRadius, 0xff0000, 0.08);
     enemy.attackCircle.setVisible(!!Debug.showAreas);
 
@@ -60,11 +62,11 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
     enemy._followGraphics.setDepth(5);
     enemy._followGraphics.setVisible(!!Debug.showAreas);
 
-    enemy.fireRate = 800; // ms
+    enemy.fireRate = (gameConfig.enemy && gameConfig.enemy.fireRate) || 800; // ms
     enemy.lastFired = 0;
 
     // chase properties
-    enemy.chaseSpeed = 120;
+    enemy.chaseSpeed = (gameConfig.enemy && gameConfig.enemy.chaseSpeed) || 120;
     enemy.isChasing = false;
     // se o inimigo já "viu" o player, continua perseguindo mesmo que o player saia da followRadius
     enemy.hasSeenPlayer = false;
@@ -152,7 +154,7 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
             if (time > this.lastFired + this.fireRate)
             {
                 this.lastFired = time;
-                fireProjectile(scene, this.x, this.y, scene.player.sprite, scene.player.sprite);
+                fireProjectile(scene, this.x, this.y, scene.player.sprite, scene.player.sprite, 'enemy');
             }
         }
         else if (d <= this.followRadius || this.hasSeenPlayer)
@@ -266,8 +268,8 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = 0.6)
 
     // wrap existing onHit to also apply slow
     const _origOnHit = enemy.onHit;
-    enemy.onHit = function (source) {
-        try { if (typeof _origOnHit === 'function') _origOnHit.call(this, source); } catch (e) { /* ignore */ }
+    enemy.onHit = function (source, damage) {
+        try { if (typeof _origOnHit === 'function') _origOnHit.call(this, source, damage); } catch (e) { /* ignore */ }
         applySlow.call(this);
     };
 

@@ -27,14 +27,6 @@ export const ENEMYS = [
                 },
             ],
         },
-        base_stats: {
-            hp: 5,
-            atk: 1,
-            def: 0,
-            shield: 0,
-            speed: 45,
-            crit_chance: 0.05,
-        },
     },
     {
         id: "arqueiro",
@@ -63,14 +55,6 @@ export const ENEMYS = [
                     img: "sprite_run_two_3.png",
                 },
             ],
-        },
-        base_stats: {
-            hp: 5,
-            atk: 1,
-            def: 0,
-            shield: 0,
-            speed: 45,
-            crit_chance: 0.05,
         },
     },
     {
@@ -101,14 +85,6 @@ export const ENEMYS = [
                 },
             ],
         },
-        base_stats: {
-            hp: 5,
-            atk: 1,
-            def: 0,
-            shield: 0,
-            speed: 45,
-            crit_chance: 0.05,
-        },
     },
     {
         id: "guerreiro",
@@ -138,14 +114,6 @@ export const ENEMYS = [
                 },
             ],
         },
-        base_stats: {
-            hp: 5,
-            atk: 1,
-            def: 0,
-            shield: 0,
-            speed: 45,
-            crit_chance: 0.05,
-        },
     },
     {
         id: "assasino",
@@ -174,14 +142,6 @@ export const ENEMYS = [
                     img: "sprite_run_two_3.png",
                 },
             ],
-        },
-        base_stats: {
-            hp: 5,
-            atk: 1,
-            def: 0,
-            shield: 0,
-            speed: 45,
-            crit_chance: 0.05,
         },
     },
 ];

@@ -4,6 +4,7 @@ import { fireProjectile } from './Projectile';
 import { Debug } from '../Debug';
 import { EventBus } from '../EventBus';
 import HealthBar from './HealthBar';
+import gameConfig from '../gameConfig';
 
 
 export default class Player
@@ -11,12 +12,11 @@ export default class Player
     constructor(scene, x, y)
     {
         this.scene = scene;
-        this.width = 32; // diameter
-        this.height = 32; // keep square for circle sprite
-
+        this.width = gameConfig.player.width; // diameter
+        this.height = gameConfig.player.width; // keep square for circle sprite
 
         // vida do player
-        this.maxHealth = 3;
+        this.maxHealth = gameConfig.player.maxHealth;
         this.health = this.maxHealth;
 
         const radius = this.width / 2;
@@ -32,7 +32,7 @@ export default class Player
         }
         this.sprite.body.setCollideWorldBounds(true);
 
-        this.rangeRadius = 4 * this.width; // regra: 4x largura do player (aumentado)
+        this.rangeRadius = (gameConfig.player.rangeMultiplier || 4) * this.width; // regra: multiplier * largura do player
         this.rangeCircle = scene.add.circle(x, y, this.rangeRadius, 0x0000ff, 0.12);
         this.rangeCircle.setVisible(!!Debug.showAreas);
 
@@ -49,8 +49,8 @@ export default class Player
         this.inAttackPosition = false; // true when reached shooting position and locked
         this.targetEnemy = null; // enemy clicked to move toward
 
-        this.moveSpeed = 220;
-        this.fireRate = 500; // ms
+        this.moveSpeed = gameConfig.player.moveSpeed;
+        this.fireRate = gameConfig.player.fireRate; // ms
         this.lastFired = 0;
         this.controlMode = 'mouse';
             this.autoFireEnabled = false;
@@ -81,8 +81,8 @@ export default class Player
         EventBus.on('auto-fire-changed', this._onAutoFire);
 
         // handler para quando o player for atingido por um projétil
-        this.onHit = (source) => {
-            this.health = Math.max(0, (this.health || 0) - 1);
+        this.onHit = (source, damage = 1) => {
+            this.health = Math.max(0, (this.health || 0) - (damage || 1));
             this.healthBar.updateHealth(this.health);
 
             // feedback visual rápido
@@ -330,7 +330,7 @@ export default class Player
         if (attackTarget) {
             if (time > this.lastFired + this.fireRate) {
                 this.lastFired = time;
-                fireProjectile(this.scene, this.sprite.x, this.sprite.y, attackTarget);
+                fireProjectile(this.scene, this.sprite.x, this.sprite.y, attackTarget, undefined, 'player');
             }
         }
     }

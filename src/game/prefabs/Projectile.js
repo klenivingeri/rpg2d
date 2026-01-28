@@ -1,16 +1,27 @@
-export function fireProjectile(scene, x, y, target, hitAgainst)
+import gameConfig from '../gameConfig';
+
+export function fireProjectile(scene, x, y, target, hitAgainst, shooterType = 'player')
 {
-    const radius = 6;
+    // support both layouts:
+    // - legacy: gameConfig.projectile.player / .enemy or gameConfig.projectile
+    // - new: default export { player, enemy } where player.projectile / enemy.projectile exist
+    let shooterCfg = null;
+    if (gameConfig.projectile) {
+        shooterCfg = gameConfig.projectile[shooterType] || gameConfig.projectile;
+    } else if (gameConfig.player || gameConfig.enemy) {
+        shooterCfg = (shooterType === 'enemy') ? (gameConfig.enemy && gameConfig.enemy.projectile) : (gameConfig.player && gameConfig.player.projectile);
+    }
+    const cfg = shooterCfg || { radius: 6, speed: 280, ttl: 3000, damage: 1 };
+    const radius = cfg.radius || 6;
     const projectile = scene.add.circle(x, y, radius, 0xffdd00);
     scene.physics.add.existing(projectile);
     projectile.body.setCircle(radius);
     projectile.body.setAllowGravity(false);
 
-    // reduzido para diminuir a velocidade dos bullets
-    const speed = 280;
+    const speed = cfg.speed || 280;
     scene.physics.moveToObject(projectile, target, speed);
 
-    const ttl = 3000; // ms
+    const ttl = cfg.ttl || 3000; // ms
 
     const destroyProjectile = () => {
         if (projectile && projectile.destroy)
@@ -23,13 +34,14 @@ export function fireProjectile(scene, x, y, target, hitAgainst)
     const onHit = (proj, obj) => {
         if (!obj || !obj.active) return;
 
+        const dmg = (cfg && cfg.damage) || 1;
         if (typeof obj.onHit === 'function')
         {
-            obj.onHit(proj);
+            obj.onHit(proj, dmg);
         }
         else if (obj.health !== undefined)
         {
-            obj.health = (obj.health || 1) - 1;
+            obj.health = (obj.health || 1) - dmg;
             if (obj.health <= 0)
             {
                 obj.destroy();
@@ -39,7 +51,7 @@ export function fireProjectile(scene, x, y, target, hitAgainst)
         {
             if (scene.player && typeof scene.player.onHit === 'function')
             {
-                scene.player.onHit(obj);
+                scene.player.onHit(proj, dmg);
             }
         }
 
