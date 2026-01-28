@@ -154,9 +154,7 @@ export default class Player
     }
 
     update(time) {
-        // suaviza a posição para evitar tremidas visuais
-        this.sprite.x = Math.round(this.sprite.x);
-        this.sprite.y = Math.round(this.sprite.y);
+        // manter posição com precisão em ponto flutuante (não arredondar)
         // atualizar visual do range
         this.rangeCircle.setPosition(this.sprite.x, this.sprite.y);
         this.rangeCircle.setVisible(!!Debug.showAreas);
