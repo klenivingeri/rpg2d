@@ -19,7 +19,7 @@ export default class Player
         this.health = this.maxHealth;
 
         // fator de escala (pode ser configurado em gameConfig.player.scale)
-        const scale = (gameConfig.player && gameConfig.player.scale) ? gameConfig.player.scale : 1.5;
+        const scale = (gameConfig.player && gameConfig.player.scale) ? gameConfig.player.scale : 1.25;
         const scaledRadius = (this.width / 2) * scale;
         // barra de vida (posicionada acima do sprite considerando a escala)
         this.healthBar = new HealthBar(scene, x, y - scaledRadius - 12, 40, 6, this.maxHealth);
@@ -28,11 +28,22 @@ export default class Player
         const firstFrameKey = 'player_run_0';
         this.sprite = scene.add.sprite(x, y, firstFrameKey);
         scene.physics.add.existing(this.sprite);
-        // ajustar tamanho do sprite para o tamanho configurado (mantém pixel art preferência)
-        if (this.sprite.setDisplaySize) {
-            this.sprite.setDisplaySize(this.width * scale, this.height * scale);
-        } else if (this.sprite.setScale) {
-            this.sprite.setScale(scale);
+        // ajustar tamanho do sprite para o tamanho configurado sem distorcer proporção
+        try {
+            const frame = this.sprite.frame || null;
+            const frameW = (frame && (frame.realWidth || frame.width)) || this.width;
+            const frameH = (frame && (frame.realHeight || frame.height)) || this.height;
+            const desiredW = this.width * scale;
+            const uniformScale = desiredW / frameW;
+            if (typeof this.sprite.setScale === 'function') {
+                this.sprite.setScale(uniformScale);
+            } else if (typeof this.sprite.setDisplaySize === 'function') {
+                const desiredH = Math.round(frameH * uniformScale);
+                this.sprite.setDisplaySize(Math.round(desiredW), desiredH);
+            }
+        } catch (e) {
+            if (this.sprite.setScale) this.sprite.setScale(scale);
+            else if (this.sprite.setDisplaySize) this.sprite.setDisplaySize(this.width * scale, this.height * scale);
         }
         // converter corpo para circular quando possível (usar raio escalado)
         if (this.sprite.body && this.sprite.body.setCircle)
@@ -42,12 +53,13 @@ export default class Player
                 const dw = this.sprite.displayWidth || (this.width * scale);
                 const dh = this.sprite.displayHeight || (this.height * scale);
             
-                const collisionRadius = Math.max(4, Math.floor(scaledRadius * 0.24));
+                const collisionMultiplier = (gameConfig.player && typeof gameConfig.player.collisionMultiplier === 'number') ? gameConfig.player.collisionMultiplier : 0.40;
+                const collisionRadius = Math.max(4, Math.floor(scaledRadius * collisionMultiplier));
                 const offsetX = Math.max(0, Math.round((dw / 2) - collisionRadius));
                 const offsetY = Math.max(0, Math.round((dh / 2) - collisionRadius));
                 
-                const visualShiftLeft = -16; // pixels
-                const visualShiftTop = -8; // pixels (negative moves up)
+                const visualShiftLeft = -12; // pixels
+                const visualShiftTop = -15; // pixels (negative moves up)
                 const offsetXAdj = offsetX + visualShiftLeft;
                 const offsetYAdj = offsetY + visualShiftTop;
                 // alguns builds do Phaser aceitam 3 argumentos, outros usam setOffset separadamente
@@ -68,6 +80,9 @@ export default class Player
             }
         }
         this.sprite.body.setCollideWorldBounds(true);
+
+        // ensure player sprite renders above tile layers (use depth 4 as requested)
+        try { if (this.sprite && typeof this.sprite.setDepth === 'function') this.sprite.setDepth(4); } catch (e) { /* ignore */ }
 
         // criar gráfico de colisão (desenharemos usando as métricas reais do corpo físico)
         try {
@@ -103,6 +118,7 @@ export default class Player
         this.rangeRadius = (gameConfig.player.rangeMultiplier || 4) * this.width; // regra: multiplier * largura do player
         this.rangeCircle = scene.add.circle(x, y, this.rangeRadius, 0x0000ff, 0.12);
         this.rangeCircle.setVisible(!!Debug.showAreas);
+        try { if (this.rangeCircle && typeof this.rangeCircle.setDepth === 'function') this.rangeCircle.setDepth(5); } catch (e) { /* ignore */ }
 
         // teclas WASD para controle do jogador
         this.keys = scene.input.keyboard.addKeys({

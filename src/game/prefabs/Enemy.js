@@ -24,7 +24,21 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
         const firstKey = `enemy_${type.id}_${animName}_${firstFrameIdx}`;
         enemy = scene.add.sprite(x, y, firstKey);
         // size sprite to provided radius BEFORE adding physics so offsets use correct display size
-        try { if (enemy.setDisplaySize) enemy.setDisplaySize(radius * 2, radius * 2); else if (enemy.setScale) enemy.setScale((radius * 2) / (enemy.width || (radius*2))); } catch (e) { /* ignore */ }
+        try {
+            const frame = enemy.frame || null;
+            const frameW = (frame && (frame.realWidth || frame.width)) || (radius * 2);
+            const frameH = (frame && (frame.realHeight || frame.height)) || (radius * 2);
+            const desiredW = radius * 2;
+            const uniformScale = desiredW / frameW;
+            if (typeof enemy.setScale === 'function') {
+                enemy.setScale(uniformScale);
+            } else if (typeof enemy.setDisplaySize === 'function') {
+                const desiredH = Math.round(frameH * uniformScale);
+                enemy.setDisplaySize(Math.round(desiredW), desiredH);
+            }
+        } catch (e) {
+            try { if (enemy.setDisplaySize) enemy.setDisplaySize(radius * 2, radius * 2); else if (enemy.setScale) enemy.setScale((radius * 2) / (enemy.width || (radius*2))); } catch (e2) { /* ignore */ }
+        }
         scene.physics.add.existing(enemy);
         // set a circular body for sprite where possible (use collision scale)
         try {
@@ -82,7 +96,7 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
             const offsetX = Math.max(0, Math.round((dw / 2) - collisionRadius));
             const offsetY = Math.max(0, Math.round((dh / 2) - collisionRadius));
             const visualShiftLeft = (gameConfig.enemy && typeof gameConfig.enemy.visualShiftLeft === 'number') ? gameConfig.enemy.visualShiftLeft : -16;
-            const visualShiftTop = (gameConfig.enemy && typeof gameConfig.enemy.visualShiftTop === 'number') ? gameConfig.enemy.visualShiftTop : -8;
+            const visualShiftTop = (gameConfig.enemy && typeof gameConfig.enemy.visualShiftTop === 'number') ? gameConfig.enemy.visualShiftTop : 0;
             const offsetXAdj = offsetX + visualShiftLeft;
             const offsetYAdj = offsetY + visualShiftTop;
             try {
@@ -219,28 +233,14 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
             } catch (e) { /* ignore */ }
         }
 
-        // ajustar depth com base na proximidade ao player e na quantidade de inimigos
+        // fix enemy depth to 4 so enemies render with player above tile layers
         try {
-            if (scene && scene.player && scene.player.sprite)
-            {
-                const px = scene.player.sprite.x;
-                const py = scene.player.sprite.y;
-                const d = Phaser.Math.Distance.Between(this.x, this.y, px, py);
-
-                const enemiesCount = (scene.enemies && typeof scene.enemies.getLength === 'function') ? Math.max(1, scene.enemies.getLength()) : 1;
-                const worldBounds = (scene.physics && scene.physics.world && scene.physics.world.bounds) ? scene.physics.world.bounds : null;
-                const diag = worldBounds ? Math.hypot(worldBounds.width, worldBounds.height) : Math.hypot(scene.scale.width, scene.scale.height);
-                const nd = Math.min(1, d / Math.max(1, diag));
-
-                const baseDepth = 100;
-                const depthOffset = Math.round((1 - nd) * enemiesCount * 10);
-                const newDepth = baseDepth + depthOffset;
-                try { this.setDepth(newDepth); } catch (e) { /* ignore */ }
-
-                // ensure selection/follow graphics sit relative to enemy depth
-                try { if (this._selectionGraphics) this._selectionGraphics.setDepth(newDepth + 1); } catch (e) { /* ignore */ }
-                try { if (this._followGraphics) this._followGraphics.setDepth(newDepth - 1); } catch (e) { /* ignore */ }
-            }
+            if (typeof this.setDepth === 'function') this.setDepth(4);
+            // ensure perception/attack visuals are above the sprite
+            try { if (this.attackCircle && typeof this.attackCircle.setDepth === 'function') this.attackCircle.setDepth(5); } catch (e) {}
+            try { if (this.followCircle && typeof this.followCircle.setDepth === 'function') this.followCircle.setDepth(5); } catch (e) {}
+            if (this._selectionGraphics && typeof this._selectionGraphics.setDepth === 'function') this._selectionGraphics.setDepth(6);
+            if (this._followGraphics && typeof this._followGraphics.setDepth === 'function') this._followGraphics.setDepth(5);
         } catch (e) { /* ignore */ }
     };
 

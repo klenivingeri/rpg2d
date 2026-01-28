@@ -61,6 +61,9 @@ export const enemy = {
     chaseSpeed: 120, // velocidade de perseguição
     rangeMultiplier: 0.6, // de perseuição
     attackRadiusExtraMultiplier: 1.5, // distancia
+    // ajustes visuais/colisão (padrões, podem ser sobrescritos)
+    visualShiftLeft: -12,
+    visualShiftTop: -17,
     projectile: {
         radius: 6,
         speed: 280,

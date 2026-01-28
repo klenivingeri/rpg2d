@@ -6,6 +6,7 @@ import gameConfig from '../gameConfig';
 import Joystick from '../inputs/Joystick';
 import { createEnemy } from '../prefabs/Enemy';
 import { Debug } from '../Debug';
+import { MAPS } from '../../data/data_maps';
 
 export class Game extends Scene
 {
@@ -60,24 +61,167 @@ export class Game extends Scene
             window.addEventListener('contextmenu', this._onContextMenu);
         }
 
-        // Fundo / mapa: força o tamanho lógico para 1600x1600 e origem em 0,0
-        const bg = this.add.image(0, 0, 'background').setOrigin(0, 0);
-        bg.setDisplaySize(1600, 1600);
+        // --- Tilemap / Mundo ---
+        const maps = Array.isArray(MAPS) ? MAPS : [];
+        const mapData = maps.length ? maps[0] : null;
+        let tilemap = null;
+        let collisionLayer = null;
+        if (mapData && mapData.tilemap_key) {
+            try {
+                tilemap = this.make.tilemap({ key: mapData.tilemap_key });
+                console.log('[Game] loaded tilemap:', mapData.tilemap_key, 'widthInPixels=', tilemap.widthInPixels, 'heightInPixels=', tilemap.heightInPixels);
+                // add tilesets declared for this map
+                const tilesetObjs = [];
+                if (Array.isArray(mapData.tilemap_images)) {
+                    mapData.tilemap_images.forEach((ti) => {
+                        try {
+                            console.log('[Game] attempting addTilesetImage', ti.name, 'textureExists=', !!this.textures.exists(ti.name));
+                            const ts = tilemap.addTilesetImage(ti.name, ti.name);
+                            if (ts) {
+                                tilesetObjs.push(ts);
+                                console.log('[Game] tileset added:', ti.name);
+                            } else {
+                                console.warn('[Game] addTilesetImage returned null for', ti.name);
+                            }
+                        } catch (e) { console.warn('[Game] failed to add tileset', ti.name, e); }
+                    });
+                }
 
-        // Limites do mundo físico para impedir que o player saia das bordas
-        this.physics.world.setBounds(0, 0, 1600, 1600, true, true, true, true);
+                // log TMJ-declared tilesets (raw data) to help diagnose mismatches
+                try {
+                    const tmjTilesets = (tilemap && tilemap.tilesets) ? tilemap.tilesets.map(ts => ({ name: ts.name, firstgid: ts.firstgid, image: ts.image })) : [];
+                    console.log('[Game] tilemap.tilesets (from TMJ):', tmjTilesets);
+                } catch (e) { /* ignore */ }
 
-        // player
-        this.player = new Player(this, 200, 300);
+                try {
+                    console.log('[Game] tilesetObjs added to Phaser:', tilesetObjs.map(t => ({ name: t.name, firstgid: t.firstgid })));
+                } catch (e) { /* ignore */ }
 
-        // enemies group
-        this.enemies = this.physics.add.group();
-        for (let i = 0; i < 5; i++)
-        {
-            const ex = 420 + i * 80;
-            const ey = 240 + (i % 2) * 40;
-            const enemy = createEnemy(this, ex, ey, 20);
-            this.enemies.add(enemy);
+                // create all layers from the tilemap
+                this.mapLayers = {};
+                if (tilemap.layers && Array.isArray(tilemap.layers)) {
+                    // log the raw layer order from the TMJ for debugging
+                    try {
+                        const layerNames = tilemap.layers.map(x => x && x.name ? x.name : '<unnamed>');
+                        console.log('[Game] tilemap layer order (from TMJ):', layerNames);
+                    } catch (e) { /* ignore logging errors */ }
+
+                    tilemap.layers.forEach((l) => {
+                        try {
+                            // skip non-tile layers only when type is explicit
+                            if (l.type && l.type !== 'tilelayer') return;
+                            console.log('[Game] creating layer:', l.name, 'type=', l.type);
+                            const layer = tilemap.createLayer(l.name, tilesetObjs, 0, 0);
+                            // detect numeric prefix like "1-", "2-" and set depth accordingly
+                            const m = (l.name || '').match(/^(\d+)-/);
+                            if (m) {
+                                const prefix = parseInt(m[1], 10);
+                                if (!Number.isNaN(prefix)) {
+                                    layer.setDepth(prefix);
+                                    console.log('[Game] setDepth ->', prefix, 'for layer', l.name);
+                                }
+                            } else {
+                                console.log('[Game] no numeric prefix for layer', l.name);
+                            }
+                            this.mapLayers[l.name] = layer;
+                        } catch (e) { console.warn('[Game] failed to create layer', l && l.name, e); }
+                    });
+
+                    // after creation, log mapLayers keys and their depths
+                    try {
+                        const created = Object.keys(this.mapLayers).map(k => ({ name: k, depth: this.mapLayers[k] && this.mapLayers[k].depth }));
+                        console.log('[Game] created mapLayers with depths:', created);
+                    } catch (e) { /* ignore */ }
+                }
+
+                // find collision layer named exactly 'obj-colision'
+                collisionLayer = this.mapLayers && this.mapLayers['obj-colision'] ? this.mapLayers['obj-colision'] : null;
+                if (collisionLayer) {
+                    collisionLayer.setCollisionByExclusion([-1]);
+                }
+
+                // adjust world and camera bounds to the tilemap size (tilemap width/height in pixels)
+                const mapWidth = tilemap.widthInPixels || (tilemap.width * (tilemap.tileWidth || 32)) || 1600;
+                const mapHeight = tilemap.heightInPixels || (tilemap.height * (tilemap.tileHeight || 32)) || 1600;
+
+                // show background scaled to map size (keeps previous background visually)
+                try {
+                    const bg = this.add.image(0, 0, 'background').setOrigin(0, 0);
+                    bg.setDisplaySize(mapWidth, mapHeight);
+                    bg.setDepth(-100);
+                } catch (e) { /* ignore background failures */ }
+
+                this.physics.world.setBounds(0, 0, mapWidth, mapHeight, true, true, true, true);
+
+                // helper: find a nearby non-colliding spawn position
+                const findSafePosition = (x, y) => {
+                    if (!collisionLayer) return { x, y };
+                    const step = 16;
+                    const maxRadius = 256;
+                    for (let r = 0; r <= maxRadius; r += step) {
+                        for (let a = 0; a < 360; a += 30) {
+                            const nx = Math.round(x + Math.cos((a / 180) * Math.PI) * r);
+                            const ny = Math.round(y + Math.sin((a / 180) * Math.PI) * r);
+                            const tile = collisionLayer.getTileAtWorldXY(nx, ny, true);
+                            if (!tile || tile.index <= 0) return { x: nx, y: ny };
+                        }
+                    }
+                    return { x, y };
+                };
+
+                // player spawn: try to use portal or fallback coords
+                const pDesired = (mapData.portal && typeof mapData.portal.x === 'number') ? { x: mapData.portal.x, y: mapData.portal.y } : { x: 200, y: 300 };
+                const pSafe = findSafePosition(pDesired.x, pDesired.y);
+                this.player = new Player(this, pSafe.x, pSafe.y);
+
+                // enemies group and spawns - respect collision layer
+                this.enemies = this.physics.add.group();
+                const enemyCount = (mapData && typeof mapData.mob_count === 'number') ? Math.max(1, mapData.mob_count) : 5;
+                for (let i = 0; i < Math.min(50, enemyCount); i++) {
+                    // attempt spreads enemies across map avoiding collisions
+                    const ex = Math.max(32, Math.min(mapWidth - 32, 420 + i * 80));
+                    const ey = Math.max(32, Math.min(mapHeight - 32, 240 + (i % 2) * 40));
+                    const safe = findSafePosition(ex, ey);
+                    const enemy = createEnemy(this, safe.x, safe.y, 20);
+                    this.enemies.add(enemy);
+                }
+
+                // add physics colliders with collision layer
+                if (collisionLayer) {
+                    try { this.physics.add.collider(this.player.sprite, collisionLayer); } catch (e) { /* ignore */ }
+                    try { this.physics.add.collider(this.enemies, collisionLayer); } catch (e) { /* ignore */ }
+                }
+
+                // set camera bounds to map size
+                const cam = this.cameras.main;
+                cam.setBounds(0, 0, mapWidth, mapHeight);
+            } catch (e) {
+                // fallback to previous fixed world if map creation fails
+                const bg = this.add.image(0, 0, 'background').setOrigin(0, 0);
+                bg.setDisplaySize(1600, 1600);
+                this.physics.world.setBounds(0, 0, 1600, 1600, true, true, true, true);
+                this.player = new Player(this, 200, 300);
+                this.enemies = this.physics.add.group();
+                for (let i = 0; i < 5; i++) {
+                    const ex = 420 + i * 80;
+                    const ey = 240 + (i % 2) * 40;
+                    const enemy = createEnemy(this, ex, ey, 20);
+                    this.enemies.add(enemy);
+                }
+            }
+        } else {
+            // no map data: fallback to previous behavior
+            const bg = this.add.image(0, 0, 'background').setOrigin(0, 0);
+            bg.setDisplaySize(1600, 1600);
+            this.physics.world.setBounds(0, 0, 1600, 1600, true, true, true, true);
+            this.player = new Player(this, 200, 300);
+            this.enemies = this.physics.add.group();
+            for (let i = 0; i < 5; i++) {
+                const ex = 420 + i * 80;
+                const ey = 240 + (i % 2) * 40;
+                const enemy = createEnemy(this, ex, ey, 20);
+                this.enemies.add(enemy);
+            }
         }
 
         // pointer input: click enemy to target, otherwise move to ground point
@@ -117,7 +261,6 @@ export class Game extends Scene
 
         // --- Câmera ---
         const cam = this.cameras.main;
-        cam.setBounds(0, 0, 1600, 1600);
 
         const followTarget = (this.player && this.player.sprite) ? this.player.sprite : this.player;
         cam.startFollow(followTarget, true, 0.1, 0.1);

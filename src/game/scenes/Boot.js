@@ -13,7 +13,6 @@ export class Boot extends Scene
         //  The smaller the file size of the assets, the better, as the Boot Scene itself has no preloader.
 
         // Carrega o background principal (arquivo em public/assets)
-        this.load.image('background', '/assets/2623929.jpg');
     }
 
     create ()

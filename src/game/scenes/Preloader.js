@@ -1,5 +1,6 @@
 import { Scene } from 'phaser';
 import gameConfig from '../gameConfig';
+import { MAPS } from '../../data/data_maps';
 
 export class Preloader extends Scene
 {
@@ -32,6 +33,10 @@ export class Preloader extends Scene
     {
         //  Load the assets for the game - Replace with your own assets
         this.load.setPath('assets');
+        // log load errors to help debugging missing assets
+        this.load.on('loaderror', (file) => {
+            console.warn('[Preloader] loaderror', file);
+        });
 
         this.load.image('logo', 'logo.png');
         this.load.image('star', 'star.png');
@@ -77,6 +82,29 @@ export class Preloader extends Scene
                 });
             }
         } catch (e) { /* ignore */ }
+
+        // carregar tilemaps e tilesets definidos em `MAPS`
+        try {
+            if (Array.isArray(MAPS)) {
+                const origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : '';
+                MAPS.forEach((m) => {
+                    if (m && m.tilemap_key && m.tilemap_path) {
+                        const tmPath = (typeof m.tilemap_path === 'string') ? m.tilemap_path.replace(/^\/*/, '') : m.tilemap_path;
+                        const tmUrl = origin + '/' + tmPath;
+                        this.load.tilemapTiledJSON(m.tilemap_key, tmUrl);
+                    }
+                    if (Array.isArray(m.tilemap_images)) {
+                        m.tilemap_images.forEach((img) => {
+                            if (img && img.name && img.path) {
+                                const imgPath = (typeof img.path === 'string') ? img.path.replace(/^\/*/, '') : img.path;
+                                const imgUrl = origin + '/' + imgPath;
+                                this.load.image(img.name, imgUrl);
+                            }
+                        });
+                    }
+                });
+            }
+        } catch (e) { console.warn('[Preloader] error scheduling map loads', e); }
     }
 
     create ()
@@ -86,6 +114,24 @@ export class Preloader extends Scene
 
         // Após carregar, NÃO iniciar o Game automaticamente.
         // O controle de início do jogo é feito pela UI React (botão INICIAR).
-        // Se necessário, poderíamos emitir um evento via EventBus aqui para sinalizar que o preloader terminou.
+        // Emitir pequenos logs que ajudam a diagnosticar se os tilesets e tilemaps
+        // ficaram disponíveis no cache do Phaser (útil para debugar assets que não aparecem).
+        try {
+            if (Array.isArray(MAPS)) {
+                MAPS.forEach((m) => {
+                    if (m && m.tilemap_key) {
+                        
+                    }
+                    if (Array.isArray(m.tilemap_images)) {
+                        m.tilemap_images.forEach((img) => {
+                            if (img && img.name) {
+                            }
+                        });
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn('[Preloader] cache check failed', e);
+        }
     }
 }
