@@ -6,13 +6,23 @@ import gameConfig from '../gameConfig';
     // aumenta a area de tiro do enemy
     //enemy.attackRadius = Math.max(24, Math.floor(playerRange * rangeMultiplier * 1.50));
 
-export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameConfig.enemy && gameConfig.enemy.rangeMultiplier) || 0.6)
+export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameConfig.enemy && gameConfig.enemy.rangeMultiplier) || 0.6, typeOverride = null)
 {
     // collision scale: permite reduzir o corpo físico em relação ao visual
     const COLLISION_SCALE = (gameConfig.enemy && typeof gameConfig.enemy.collisionScale === 'number') ? gameConfig.enemy.collisionScale : 0.9;
     // pick enemy type (random from configured types) to choose sprite/animations
     const types = (gameConfig && gameConfig.enemy && Array.isArray(gameConfig.enemy.types)) ? gameConfig.enemy.types : [];
-    const type = types.length ? types[Math.floor(Math.random() * types.length)] : null;
+    let type = null;
+    if (typeOverride) {
+        if (typeof typeOverride === 'string') {
+            type = types.find(t => t && t.id === typeOverride) || null;
+        } else if (typeof typeOverride === 'object') {
+            type = typeOverride;
+        }
+    }
+    if (!type) {
+        type = types.length ? types[Math.floor(Math.random() * types.length)] : null;
+    }
 
     // determine initial frame key for sprite (fallback to simple colored circle if none)
     let enemy = null;
@@ -75,7 +85,8 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
                     const frames = framesArr.map((f, idx) => ({ key: `enemy_${type.id}_${aName}_${idx}` }));
                     const duration = (framesArr[0] && framesArr[0].duration) || 100;
                     const frameRate = Math.max(1, Math.round(1000 / duration));
-                    scene.anims.create({ key: animKey, frames, frameRate, repeat: -1 });
+                    const repeat = (aName === 'attack') ? 0 : -1;
+                    scene.anims.create({ key: animKey, frames, frameRate, repeat });
                 }
             });
             // play idle or run animation by default
@@ -174,6 +185,13 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
     enemy.fireRate = (gameConfig.enemy && gameConfig.enemy.fireRate) || 800; // ms
     enemy.lastFired = 0;
 
+    // helper to clear any pending attack timers/listeners when attack finishes or enemy dies
+    enemy._clearPendingAttack = function () {
+        try { if (this._attackTimeout) { try { this._attackTimeout.remove(); } catch (e) { /* ignore */ } this._attackTimeout = null; } } catch (e) { /* ignore */ }
+        try { if (this._attackCompleteHandler) { try { this.off('animationcomplete', this._attackCompleteHandler); } catch (e) { /* ignore */ } this._attackCompleteHandler = null; } } catch (e) { /* ignore */ }
+        try { this._isAttacking = false; } catch (e) { /* ignore */ }
+    };
+
     // chase properties
     enemy.chaseSpeed = (gameConfig.enemy && gameConfig.enemy.chaseSpeed) || 120;
     enemy.isChasing = false;
@@ -271,8 +289,64 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
 
             if (time > this.lastFired + this.fireRate)
             {
-                this.lastFired = time;
-                fireProjectile(scene, this.x, this.y, scene.player.sprite, scene.player.sprite, 'enemy');
+                // se o tipo definir animação de ataque, tocar a animação e disparar quando completar
+                const hasAttackAnim = type && type.animation && type.animation.attack;
+                if (hasAttackAnim) {
+                    const attackKey = `enemy_${type.id}_attack_anim`;
+                    if (scene && scene.anims && scene.anims.exists(attackKey) && this.play) {
+                        this.lastFired = time; // bloqueia novos tiros até o próximo ciclo
+                        try {
+                            // tentativa robusta: tocar animação e usar 2 mecanismos para garantir o disparo:
+                            // 1) listener 'animationcomplete' que dispara apenas se for a animação correta
+                            // 2) fallback por timeout baseado na duração estimada das frames
+                            let fired = false;
+                            const onComplete = (anim) => {
+                                try {
+                                    if (anim && anim.key === attackKey && !fired) {
+                                        fired = true;
+                                        try { fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true }); } catch (e) { /* ignore */ }
+                                        try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
+                                    }
+                                } catch (e) { /* ignore */ }
+                            };
+                            try { this._attackCompleteHandler = onComplete; } catch (e) { /* ignore */ }
+                            this.once('animationcomplete', onComplete);
+                            // schedule fallback
+                            try {
+                                const attackFrames = (type.animation && Array.isArray(type.animation.attack)) ? type.animation.attack.length : 1;
+                                const frameDur = (type.animation && type.animation.attack && type.animation.attack[0] && type.animation.attack[0].duration) ? type.animation.attack[0].duration : 100;
+                                const totalMs = Math.max(50, (attackFrames * frameDur) + 50);
+                                const tev = scene.time.addEvent({ delay: totalMs, callback: () => {
+                                    try {
+                                        if (!fired) {
+                                            fired = true;
+                                            try { fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true }); } catch (e) { /* ignore */ }
+                                            try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
+                                        }
+                                    } catch (e) { /* ignore */ }
+                                }});
+                                try { this._attackTimeout = tev; } catch (e) { /* ignore */ }
+                            } catch (e) {
+                                // ignore timing fallback errors
+                            }
+                            try { this._isAttacking = true; } catch (e) { /* ignore */ }
+                            this.play(attackKey);
+                            } catch (e) {
+                            this.lastFired = time;
+                            try { this._isAttacking = false; } catch (e) { /* ignore */ }
+                            try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
+                            fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true });
+                        }
+                    } else {
+                        this.lastFired = time;
+                        try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
+                        fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true });
+                    }
+                } else {
+                    this.lastFired = time;
+                    try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
+                    fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true });
+                }
             }
         }
         else if (d <= this.followRadius || this.hasSeenPlayer)
@@ -298,6 +372,22 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
             }
             this.isChasing = false;
         }
+
+        // trocar animação entre 'idle' e 'run' dependendo do movimento
+            try {
+            // se estiver executando uma animação de ataque, não sobrescrever
+            if (this._isAttacking) return;
+            const vel = (this.body && this.body.velocity) ? Math.hypot(this.body.velocity.x || 0, this.body.velocity.y || 0) : 0;
+            const moving = vel > 1;
+            const desiredAnim = moving ? 'run' : 'idle';
+            const animKey = `enemy_${type.id}_${desiredAnim}_anim`;
+            const cur = (this.anims && this.anims.currentAnim) ? this.anims.currentAnim.key : null;
+            if (cur !== animKey) {
+                if (scene && scene.anims && scene.anims.exists(animKey) && this.play) {
+                    this.play(animKey);
+                }
+            }
+        } catch (e) { /* ignore animation switch failures */ }
     };
 
     // ensure sprite faces the movement direction
@@ -370,6 +460,7 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
 
         if (this.health <= 0)
         {
+            try { if (typeof this._clearPendingAttack === 'function') this._clearPendingAttack(); } catch (e) { /* ignore */ }
             this.destroy();
         }
     };
@@ -409,6 +500,7 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
     // when enemy is destroyed, clean up selection graphic, range circle and clear player selection
     enemy.on('destroy', () =>
     {
+        try { if (typeof enemy._clearPendingAttack === 'function') enemy._clearPendingAttack(); } catch (e) { /* ignore */ }
         if (enemy._selectionGraphics)
         {
             enemy._selectionGraphics.destroy();

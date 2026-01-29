@@ -50,7 +50,7 @@ export const MAPS = [
             },
         ],
         next_map_id: "nature_2", // proximo mapa a ser exibido quando entrar no portal
-        mob_count: 2, // quantidade de enemys que vão spawnar nesse mapa
+        mob_count: 10, // quantidade de enemys que vão spawnar nesse mapa
         possible_mobs: ["tank", "arqueiro"], // os tipos de enemy que podem spawnar nesse mapa
         boss_spawn_pos: { x: 1200, y: 200 }, // posicao do boss no mapa, ele tem o drop de tudo que um enemy normal tem
         portal: { x: 575, y: 1150, sprit: "", w: "50", h: "50" },

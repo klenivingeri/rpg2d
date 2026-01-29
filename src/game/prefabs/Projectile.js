@@ -15,6 +15,8 @@ export function fireProjectile(scene, x, y, target, hitAgainst, shooterType = 'p
     const radius = cfg.radius || 6;
     const projectile = scene.add.circle(x, y, radius, 0xffdd00);
     scene.physics.add.existing(projectile);
+    // if a projectiles group exists on the scene, add this projectile so we can manage collisions centrally
+    try { if (scene.projectiles && typeof scene.projectiles.add === 'function') scene.projectiles.add(projectile); } catch (e) { /* ignore */ }
     projectile.body.setCircle(radius);
     projectile.body.setAllowGravity(false);
 
