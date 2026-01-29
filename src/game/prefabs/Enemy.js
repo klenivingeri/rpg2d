@@ -141,6 +141,9 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
     }
     enemy.health = (gameConfig.enemy && gameConfig.enemy.baseHealth) || 3;
 
+    // anexar referência ao tipo original para permitir que callers identifiquem o tipo (ex: 'tank')
+    try { enemy.enemyType = type || null; enemy.typeId = (type && type.id) ? type.id : null; } catch (e) { /* ignore */ }
+
     // create a selection border (Graphics) and hide by default
     const sel = scene.add.graphics({ x: 0, y: 0 });
     sel.lineStyle(3, 0xffff00, 1);
@@ -304,7 +307,7 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
                                 try {
                                     if (anim && anim.key === attackKey && !fired) {
                                         fired = true;
-                                        try { fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true }); } catch (e) { /* ignore */ }
+                                        try { fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, this, { skipSpawnOffset: true }); } catch (e) { /* ignore */ }
                                         try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
                                     }
                                 } catch (e) { /* ignore */ }
@@ -320,7 +323,7 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
                                     try {
                                         if (!fired) {
                                             fired = true;
-                                            try { fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true }); } catch (e) { /* ignore */ }
+                                            try { fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, this, { skipSpawnOffset: true }); } catch (e) { /* ignore */ }
                                             try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
                                         }
                                     } catch (e) { /* ignore */ }
@@ -335,17 +338,17 @@ export function createEnemy(scene, x, y, radius = 20, rangeMultiplier = (gameCon
                             this.lastFired = time;
                             try { this._isAttacking = false; } catch (e) { /* ignore */ }
                             try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
-                            fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true });
+                            fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, this, { skipSpawnOffset: true });
                         }
                     } else {
                         this.lastFired = time;
                         try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
-                        fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true });
+                        fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, this, { skipSpawnOffset: true });
                     }
                 } else {
                     this.lastFired = time;
                     try { this._clearPendingAttack(); } catch (e) { /* ignore */ }
-                    fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, 'enemy', { skipSpawnOffset: true });
+                    fireProjectile(scene, this.x, this.y + 10, scene.player.sprite, scene.player.sprite, this, { skipSpawnOffset: true });
                 }
             }
         }

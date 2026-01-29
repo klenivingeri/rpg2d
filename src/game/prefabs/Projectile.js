@@ -1,19 +1,32 @@
 import gameConfig from '../gameConfig';
 
-export function fireProjectile(scene, x, y, target, hitAgainst, shooterType = 'player')
-{
-    // support both layouts:
-    // - legacy: gameConfig.projectile.player / .enemy or gameConfig.projectile
-    // - new: default export { player, enemy } where player.projectile / enemy.projectile exist
+export function fireProjectile(scene, x, y, target, hitAgainst, shooter = 'player') {
+    // determine shooter kind (string 'player'|'enemy' or an enemy object)
+    const shooterKey = (typeof shooter === 'string') ? shooter : 'enemy';
+    let shooterTypeId = null;
+    try {
+        if (shooter && typeof shooter === 'object') {
+            if (shooter.enemyType && shooter.enemyType.id) shooterTypeId = shooter.enemyType.id;
+            else if (shooter.type && shooter.type.id) shooterTypeId = shooter.type.id;
+            else if (shooter.typeId) shooterTypeId = shooter.typeId;
+            else if (shooter.id) shooterTypeId = shooter.id;
+        }
+    } catch (e) { /* ignore */ }
+
+    // support both layouts for projectile config
     let shooterCfg = null;
     if (gameConfig.projectile) {
-        shooterCfg = gameConfig.projectile[shooterType] || gameConfig.projectile;
+        shooterCfg = gameConfig.projectile[shooterKey] || gameConfig.projectile;
     } else if (gameConfig.player || gameConfig.enemy) {
-        shooterCfg = (shooterType === 'enemy') ? (gameConfig.enemy && gameConfig.enemy.projectile) : (gameConfig.player && gameConfig.player.projectile);
+        shooterCfg = (shooterKey === 'enemy') ? (gameConfig.enemy && gameConfig.enemy.projectile) : (gameConfig.player && gameConfig.player.projectile);
     }
     const cfg = shooterCfg || { radius: 6, speed: 280, ttl: 3000, damage: 1 };
     const radius = cfg.radius || 6;
-    const projectile = scene.add.circle(x, y, radius, 0xffdd00);
+    // default color: yellow; special-case: enemy of type 'tank' -> gray
+    const defaultColor = 0xffdd00;
+    const tankColor = 0x808080;
+    const color = (shooterKey === 'enemy' && shooterTypeId === 'tank') ? tankColor : defaultColor;
+    const projectile = scene.add.circle(x, y, radius, color);
     scene.physics.add.existing(projectile);
     // if a projectiles group exists on the scene, add this projectile so we can manage collisions centrally
     try { if (scene.projectiles && typeof scene.projectiles.add === 'function') scene.projectiles.add(projectile); } catch (e) { /* ignore */ }
@@ -23,14 +36,14 @@ export function fireProjectile(scene, x, y, target, hitAgainst, shooterType = 'p
     // garantir visibilidade e depth para não ficar oculto atrás de outros objetos
     try {
         if (typeof projectile.setDepth === 'function') projectile.setDepth(1100);
-        if (typeof projectile.setFillStyle === 'function') projectile.setFillStyle(0xffdd00, 1);
+        if (typeof projectile.setFillStyle === 'function') projectile.setFillStyle(color, 1);
         if (typeof projectile.setVisible === 'function') projectile.setVisible(true);
         if (typeof projectile.setActive === 'function') projectile.setActive(true);
         if (typeof projectile.setStrokeStyle === 'function') projectile.setStrokeStyle(1, 0x000000, 1);
     } catch (e) {}
 
     // DEBUG: log criação do projétil
-    try { console.debug('[Projectile] created', { x, y, radius, shooterType }); } catch (e) {}
+    try { console.debug('[Projectile] created', { x, y, radius, shooter }); } catch (e) {}
 
     const speed = cfg.speed || 280;
 
@@ -58,6 +71,50 @@ export function fireProjectile(scene, x, y, target, hitAgainst, shooterType = 'p
     } catch (e) { /* ignore */ }
 
     scene.physics.moveToObject(projectile, target, speed);
+
+    // special behavior: se o atirador for o 'mago', aumentar gradualmente o raio até 10x em 3s
+    try {
+        if (shooterKey === 'enemy' && shooterTypeId === 'mago') {
+            const initialRadius = radius;
+            const finalRadius = Math.max(1, Math.round(initialRadius * 10));
+            try {
+                scene.tweens.addCounter({
+                    from: 0,
+                    to: 1,
+                    duration: 3000,
+                    onUpdate: (tween) => {
+                        try {
+                            const t = tween.progress || 0;
+                            const newR = Math.max(1, Math.round(initialRadius + (finalRadius - initialRadius) * t));
+                            const newDiameter = Math.max(2, newR * 2);
+                            try {
+                                if (typeof projectile.setDisplaySize === 'function') {
+                                    projectile.setDisplaySize(newDiameter, newDiameter);
+                                } else if (typeof projectile.setScale === 'function' && projectile.radius) {
+                                    const baseDiameter = (projectile.radius || initialRadius) * 2;
+                                    const scale = baseDiameter ? (newDiameter / baseDiameter) : 1;
+                                    projectile.setScale(scale);
+                                } else {
+                                    projectile.radius = newR;
+                                }
+                            } catch (e) { /* ignore visual update errors */ }
+
+                            if (projectile.body) {
+                                try {
+                                    if (typeof projectile.body.setCircle === 'function') {
+                                        projectile.body.setCircle(Math.max(1, newR));
+                                    }
+                                    // align physics body to the game object center
+                                    try { projectile.body.x = Math.round(projectile.x - newR); projectile.body.y = Math.round(projectile.y - newR); } catch (e) {}
+                                    if (typeof projectile.body.updateFromGameObject === 'function') projectile.body.updateFromGameObject();
+                                } catch (e) { /* ignore body update errors */ }
+                            }
+                        } catch (e) { /* ignore per-frame errors */ }
+                    }
+                });
+            } catch (e) { /* ignore tween setup errors */ }
+        }
+    } catch (e) { /* ignore detection errors */ }
 
     const ttl = cfg.ttl || 3000; // ms
 
